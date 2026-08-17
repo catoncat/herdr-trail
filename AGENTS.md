@@ -31,15 +31,19 @@ herdr 插件：**herd 全局共享 todolist**。agent 在对话中随手记/随�
 
 **焦点/跳转**
 - `herdr pane current` 在 agent pane 内返回 JSON:`{ result: { pane: { pane_id, tab_id, workspace_id, cwd, agent, agent_session: { value: <session 文件路径> }, ... } } }`（已实测）
-- ⚠️ `herdr pane focus` 只支持 `--direction left|right|up|down`（邻居焦点）,**任意 pane 焦点需另找路**：候选 `herdr tab focus` + socket API(`herdr api schema` 查 FocusPane)。**这是开工第一个待验证项**
-- `herdr tab create` / `herdr tab focus` / `herdr agent start <NAME> --kind pi --pane <ID> -- <args...>`(pane 需停在 shell 提示符）
+- ~~⚠️ `herdr pane focus` 只支持方向~~ **已解决(0.8.0 实测)**:任意 pane 焦点 = `herdr agent focus <pane_id>`(跨 workspace ✓);目标 pane 无 agent(shell)时报 `agent_not_found` → 兜底 `herdr tab focus <tab_id>`。socket API 另有 `pane.focus {pane_id}`(无 CLI;协议=unix socket 换行 JSON,`HERDR_SOCKET_PATH`)
+- `herdr tab create` 返回 `result.root_pane.pane_id`;`herdr agent start <NAME> --kind pi --pane <ID> -- <args...>` 实测可用
+- ⚠️ **agent start 对新 tab 有 shell 就绪竞态**:tab create 后立刻 start 会失败,需重试(本项目 execPlan 重试 3 次间隔 1.5s)
+- ⚠️ `herdr plugin pane close` 收 **pane_id 位置参数**(pane-mover 的 --plugin/--entrypoint 写法在 0.8.0 失效,且会卡死 popup 槽报 "popup already open";socket 调 `popup.close` 可清)
+- ⚠️ CLI `plugin pane open --placement` 仅 overlay|split|tab|zoomed(**无 popup**,popup 是 manifest 专用)
+- ⚠️ overlay 宿主 workspace ≠ 用户 workspace;落点 workspace 取 `HERDR_PLUGIN_CONTEXT_JSON.workspace_id`(调用上下文)
 
 ## 已验证的 pi 事实
 
-- agent pane 内 env:`PI_SESSION_ID`、`PI_SESSION_FILE`（完整路径）、`HERDR_PANE_ID`、`HERDR_WORKSPACE_ID`、`HERDR_TAB_ID` —— **溯源字段 add 时零参数自动捕获**
+- ~~agent pane 内 env `PI_SESSION_ID`/`PI_SESSION_FILE`~~ **不存在(0.84.2 实测)**。有 `HERDR_PANE_ID/HERDR_TAB_ID/HERDR_WORKSPACE_ID/HERDR_SOCKET_PATH` + `PI_CODING_AGENT=true` + `PI_INTERCOM_SESSION_ID`(session uuid)。**session 文件走 `herdr pane get $HERDR_PANE_ID` → `agent_session.value`(kind=path)**,uuid 从文件名 `_<uuid>.jsonl` 解析。溯源 add 时零参数自动捕获(provenance.js)
 - resume:`pi --session <path|partial-uuid>`；分叉用 `--fork`。session 文件在 `~/.pi/agent/sessions/<project-slug>/`
 - 本地扩展目录 `~/.pi/agent/extensions/*.ts` 自动被发现（用户已有一堆 .ts 在用）
-- pi 工具注册 API **未验证** → 参考 `~/.pi/agent/npm/node_modules/@juicesharp/rpiv-todo/`（已装的 npm 扩展）或 GitHub `leset0ng/pi-todo-herdr`,pi 官方文档在 `~/.local/share/fnm/.../pi-coding-agent/docs/extensions.md`
+- pi 工具注册 **已验证**:`pi.registerTool({name,label,description,parameters: Type.Object({...}),async execute(id,params)→{content:[{type:'text',text}],details:{}}})`,typebox 可直接 import;docs 在 `~/.pi/agent/npm/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`;`~/.pi/agent/extensions/*.ts` 自动发现。无头验证:`pi -ne -nc -ns -e <ext> -p ... --mode json --tools trail_add --offline --model tokenharbor-chat/gpt-5.6-luna`(packyapi 额度已空,别用)
 
 ## 竞品参考（各自抄什么）
 
@@ -58,12 +62,18 @@ herdr 插件：**herd 全局共享 todolist**。agent 在对话中随手记/随�
 - commit:`<type>(scope): <summary>`，中文动词开头，<50 字，无句号，原子提交
 - 输出偏好：竖向布局图表；回复不超过一屏
 
+## 实现状态(2026-08-17 M1-M3 完成)
+
+- M1 数据层+CLI / M2 pi 工具+skill / M3 overlay+跳源:**已实现并提交**,38 个 node:test 全绿(`node --test`)
+- E2E 验收:1(溯源)✓ 2(overlay enter→focus)✓ 3(死 pane resume 同 session 历史完整)✓ 4(20 进程并发)✓;5(herdr 重启)未实测 —— 重启会杀本会话,store 为纯文件按构造持久
+- 未做:T9 GitHub 发布(仓库未推远端);overlay 鼠标点击(pane-mover 有,PRD 未要求)
+
 ## 验证配方
 
 ```bash
 herdr plugin link ~/src/herdr-trail        # 注册
 herdr plugin list                          # 确认 enabled
-herdr plugin action invoke open --plugin envvar.herd-trail   # 开 overlay(语法待验证)
+herdr plugin action invoke open --plugin envvar.herd-trail   # 开 overlay(已验证)
 bin/herd-trail add "测试条目"               # 在本 pane 跑,list 应带溯源
 herdr plugin pane open --plugin envvar.herd-trail --entrypoint list  # 直接开 pane
 ```
