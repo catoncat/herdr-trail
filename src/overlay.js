@@ -69,7 +69,10 @@ function leaveUi() {
   try { process.stdin.setRawMode(false); } catch { /* gone */ }
 }
 function closeOverlayPane() {
-  spawnSync(herdr, ["plugin", "pane", "close", "--plugin", pluginId, "--entrypoint", "list"]);
+  // herdr 0.8.0:plugin pane close 接收 pane_id 位置参数(--plugin/--entrypoint 是旧写法,
+  // 实测 0.8.0 报错 → popup 槽位卡住 "popup already open")
+  const self = process.env.HERDR_PANE_ID;
+  if (self) spawnSync(herdr, ["plugin", "pane", "close", self]);
 }
 function quit(code) {
   clearInterval(pollTimer);
@@ -84,9 +87,14 @@ function render() {
   out.write("\x1b[2J\x1b[H");
   const head = " Trail — herd 全局 todolist" + (filter ? "  /" + filter + "/" : "");
   out.write(B + view.truncate(head, cols) + R + "\r\n");
-  out.write(D + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · / 过滤 · r 刷新 · q 退出", cols) + R + "\r\n");
+  // 高度自适应:矮 pane 依次砍 help、详情行,保 header+列表+状态(窄屏适配,PRD §8)
+  const showHelp = lines >= 6;
+  const showDetail = lines >= 8 && mode === "normal" && rows.length > 0;
+  if (showHelp) {
+    out.write(D + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · / 过滤 · r 刷新 · q 退出", cols) + R + "\r\n");
+  }
 
-  const capacity = Math.max(1, lines - 6);
+  const capacity = Math.max(1, lines - 2 - (showHelp ? 1 : 0) - (showDetail ? 1 : 0));
   const [start, end] = view.visibleWindow(rows.length, cursor, capacity);
   for (let i = start; i < end; i++) {
     const row = view.formatRow(rows[i], cols);
@@ -97,9 +105,9 @@ function render() {
 
   // 选中条详情(全文+溯源),窄屏兜底
   const sel = rows[cursor];
-  if (sel && mode === "normal") {
+  if (sel && showDetail) {
     const src = sel.source ?? {};
-    const detail = ` ${sel.id} ${sel.text}  [${src.kind}${src.agent_name ? " · " + src.agent_name : ""}${src.pi_session_id ? " · session " + src.pi_session_id.slice(0, 8) : ""}]`;
+    const detail = " " + sel.id + " " + sel.text + "  [" + src.kind + (src.agent_name ? " · " + src.agent_name : "") + (src.pi_session_id ? " · session " + src.pi_session_id.slice(0, 8) : "") + "]";
     out.write(D + view.truncate(detail, cols) + R + "\r\n");
   }
 
@@ -194,5 +202,6 @@ pollTimer = setInterval(() => {
 reload();
 enterUi();
 render();
+process.on("SIGWINCH", () => render()); // 终端 resize 即时重绘
 process.on("SIGTERM", () => quit(0));
 process.on("SIGINT", () => quit(0));

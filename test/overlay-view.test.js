@@ -36,6 +36,17 @@ test("formatRow: 列含 id/状态/agent/项目/年龄/文本;超宽截断", () =
   assert.ok(displayWidth(narrow) <= 30);
 });
 
+test("formatRow: 超窄(24/20 列)总宽仍不溢出(窄屏适配)", () => {
+  for (const cols of [40, 30, 24, 20, 16]) {
+    const row = formatRow(T, cols);
+    assert.ok(displayWidth(row) <= cols, "cols=" + cols + " 实际宽 " + displayWidth(row) + ": " + row);
+  }
+  // 极窄时 id/状态/文本仍在(项目/agent 列可收缩让位)
+  const r24 = formatRow(T, 24);
+  assert.match(r24, /t-a3f9/);
+  assert.match(r24, /○/);
+});
+
 test("formatRow: done 条目用 ●;无 agent 显示 -", () => {
   const done = { ...T, status: "done", done_at: new Date().toISOString(), source: { ...T.source, agent_name: null } };
   const row = formatRow(done, 80);

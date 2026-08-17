@@ -57,13 +57,21 @@ function pad(s, w) {
 const OVERHEAD = 6 + 1 + 1 + 1 + 1 + 1 + 4 + 1; // id sp glyph sp sp age sp
 function formatRow(todo, cols) {
   const glyph = todo.status === "done" ? "●" : "○";
+  // 极窄(<20):只保 id/状态/文本
+  if (cols < 20) {
+    return pad(truncate(todo.id, 6), 6) + " " + glyph + " " + truncate(todo.text, Math.max(1, cols - 9));
+  }
   const agent = todo.source?.agent_name || "-";
   const project = projectOf(todo) || "-";
   const when = todo.status === "done" && todo.done_at ? todo.done_at : todo.created_at;
   const avail = Math.max(3, cols - OVERHEAD);
-  const agentW = Math.min(16, Math.max(4, Math.floor(avail * 0.28)));
-  const projW = Math.min(12, Math.max(4, Math.floor(avail * 0.22)));
-  const textW = Math.max(1, avail - agentW - projW);
+  let agentW = Math.min(16, Math.max(4, Math.floor(avail * 0.28)));
+  let projW = Math.min(12, Math.max(4, Math.floor(avail * 0.22)));
+  let textW = avail - agentW - projW;
+  // 超窄:先砍项目列再砍 agent 列,保 id/状态/文本(窄屏适配,PRD §8)
+  if (textW < 1) { projW = Math.max(0, projW + textW - 1); textW = avail - agentW - projW; }
+  if (textW < 1) { agentW = Math.max(0, agentW + textW - 1); textW = avail - agentW - projW; }
+  textW = Math.max(1, textW);
   return pad(truncate(todo.id, 6), 6) + " " + glyph + " " +
     pad(truncate(agent, agentW), agentW) + " " + pad(truncate(project, projW), projW) + " " +
     pad(ageLabel(when), 4) + " " + truncate(todo.text, textW);
