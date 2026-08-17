@@ -1,0 +1,18 @@
+id = "envvar.herd-trail"
+name = "Trail"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Herd-wide shared todo list: agents jot follow-ups mid-conversation, humans manage one global list, every entry links back to the conversation that created it (focus or resume)."
+platforms = ["macos", "linux"]
+
+[[actions]]
+id = "open"
+title = "Open trail list"
+contexts = ["workspace"]
+command = ["node", "src/open-action.js"]
+
+[[panes]]
+id = "list"
+title = "Trail"
+placement = "overlay"
+command = ["node", "src/overlay.js"]

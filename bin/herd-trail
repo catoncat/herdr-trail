@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+// herd-trail CLI — 唯一事实源。见 docs/prd.md §3/§4(T1/T2/T6/T7)。
+// 状态:骨架。已实现:path/帮助。其余子命令待 M1。
+"use strict";
+
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const PLUGIN_ID = "envvar.herd-trail";
+const FALLBACK_DIR = path.join(
+  process.env.HOME || "~",
+  ".local", "share", "herd-trail"
+);
+
+function storeDir() {
+  const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
+  const res = spawnSync(herdr, ["plugin", "config-dir", PLUGIN_ID], {
+    encoding: "utf8",
+  });
+  if (res.status === 0 && res.stdout.trim()) return res.stdout.trim();
+  return FALLBACK_DIR;
+}
+
+const usage = `herd-trail — herd 全局共享 todolist(见 docs/prd.md)
+
+用法:
+  herd-trail add "文本"        记录(自动捕获溯源)[M1]
+  herd-trail list [--all] [--json]  列出(open 优先)[M1]
+  herd-trail done|undo|rm <id> 完成/撤销/删除      [M1]
+  herd-trail show <id>        详情(含溯源)       [M1]
+  herd-trail open <id>        跳回源对话(focus 或 resume)[M3]
+  herd-trail path             打印数据文件路径
+`;
+
+const cmd = process.argv[2];
+if (cmd === "path") {
+  console.log(path.join(storeDir(), "todos.json"));
+} else if (!cmd || cmd === "-h" || cmd === "--help") {
+  process.stdout.write(usage);
+} else {
+  process.stderr.write(`herd-trail: '${cmd}' 尚未实现(M1 见 docs/prd.md)\n\n${usage}`);
+  process.exit(2);
+}
