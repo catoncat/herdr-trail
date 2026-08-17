@@ -11,6 +11,12 @@ title = "Open trail list"
 contexts = ["workspace"]
 command = ["node", "src/open-action.js"]
 
+[[actions]]
+id = "agent-setup"
+title = "Install pi tools + skill"
+contexts = ["workspace"]
+command = ["node", "src/agent-setup.js"]
+
 [[panes]]
 id = "list"
 title = "Trail"
