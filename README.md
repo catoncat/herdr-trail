@@ -13,7 +13,7 @@ Non-goals (v0): no reminders/notifications, no per-project backlogs, no priority
 ## Install
 
 ```bash
-herdr plugin install envvar/herd-trail
+herdr plugin install catoncat/herdr-trail
 # or, while developing:
 herdr plugin link /path/to/herdr-trail
 ```
