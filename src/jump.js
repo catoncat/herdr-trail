@@ -44,9 +44,7 @@ function planJump(todo, { runner, fileExists = () => false, currentWorkspace = n
   return none;
 }
 
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
+const { sleepSync } = require("./store.js");
 
 function execPlan(plan, runner, { retries = 3, retryDelayMs = 1500 } = {}) {
   let newPane = null;

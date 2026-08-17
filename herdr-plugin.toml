@@ -1,7 +1,7 @@
 id = "envvar.herd-trail"
 name = "Trail"
 version = "0.1.0"
-min_herdr_version = "0.7.0"
+min_herdr_version = "0.8.0" # 实测基线:agent focus / plugin pane close <pane_id>
 description = "Herd-wide shared todo list: agents jot follow-ups mid-conversation, humans manage one global list, every entry links back to the conversation that created it (focus or resume)."
 platforms = ["macos", "linux"]
 

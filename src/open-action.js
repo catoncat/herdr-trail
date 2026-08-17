@@ -13,4 +13,6 @@ const res = spawnSync(
   { encoding: "utf8" }
 );
 if (res.stderr) process.stderr.write(res.stderr);
-process.exit(res.status ?? 0);
+if (res.error) process.stderr.write("herdr 调用失败: " + res.error.message + "\n");
+process.exit(res.status ?? 1); // spawn 失败时 status 为 null,不能静默成功
+

@@ -23,13 +23,7 @@ function fail(msg, code = 1) {
   process.exit(code);
 }
 
-function ageLabel(iso) {
-  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
-  if (s < 60) return Math.floor(s) + "s";
-  if (s < 3600) return Math.floor(s / 60) + "m";
-  if (s < 86400) return Math.floor(s / 3600) + "h";
-  return Math.floor(s / 86400) + "d";
-}
+const { ageLabel } = require("../src/overlay-view.js");
 
 function file() {
   return store.storeFile(store.resolveStoreDir());

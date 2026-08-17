@@ -15,7 +15,6 @@ const view = require("./overlay-view.js");
 const { planJump, herdrRunner, resolveWorkspace } = require("./jump.js");
 
 const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
-const pluginId = process.env.HERDR_PLUGIN_ID ?? "envvar.herd-trail";
 const BIN = path.join(__dirname, "..", "bin", "herd-trail");
 const FILE = store.storeFile(store.resolveStoreDir());
 
@@ -57,7 +56,7 @@ function humanSource() {
 
 // ---------- ui ----------
 const out = process.stdout;
-const B = "\x1b[1m", D = "\x1b[2m", I = "\x1b[7m", R = "\x1b[0m";
+const BOLD = "\x1b[1m", DIM = "\x1b[2m", INVERT = "\x1b[7m", RESET = "\x1b[0m";
 
 function enterUi() {
   out.write("\x1b[?1049h\x1b[?25l");
@@ -86,35 +85,35 @@ function render() {
   const lines = out.rows || 24;
   out.write("\x1b[2J\x1b[H");
   const head = " Trail — herd 全局 todolist" + (filter ? "  /" + filter + "/" : "");
-  out.write(B + view.truncate(head, cols) + R + "\r\n");
+  out.write(BOLD + view.truncate(head, cols) + RESET + "\r\n");
   // 高度自适应:矮 pane 依次砍 help、详情行,保 header+列表+状态(窄屏适配,PRD §8)
   const showHelp = lines >= 6;
   const showDetail = lines >= 8 && mode === "normal" && rows.length > 0;
   if (showHelp) {
-    out.write(D + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · / 过滤 · r 刷新 · q 退出", cols) + R + "\r\n");
+    out.write(DIM + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · / 过滤 · r 刷新 · q 退出", cols) + RESET + "\r\n");
   }
 
   const capacity = Math.max(1, lines - 2 - (showHelp ? 1 : 0) - (showDetail ? 1 : 0));
   const [start, end] = view.visibleWindow(rows.length, cursor, capacity);
   for (let i = start; i < end; i++) {
     const row = view.formatRow(rows[i], cols);
-    const dim = rows[i].status === "done" ? D : "";
-    out.write((i === cursor ? I + view.truncate(row, cols) + R : dim + view.truncate(row, cols) + R) + "\r\n");
+    const dim = rows[i].status === "done" ? DIM : "";
+    out.write((i === cursor ? INVERT + view.truncate(row, cols) + RESET : dim + view.truncate(row, cols) + RESET) + "\r\n");
   }
-  if (!rows.length) out.write(D + "  (空 — 按 a 新建)" + R + "\r\n");
+  if (!rows.length) out.write(DIM + "  (空 — 按 a 新建)" + RESET + "\r\n");
 
   // 选中条详情(全文+溯源),窄屏兜底
   const sel = rows[cursor];
   if (sel && showDetail) {
     const src = sel.source ?? {};
     const detail = " " + sel.id + " " + sel.text + "  [" + src.kind + (src.agent_name ? " · " + src.agent_name : "") + (src.pi_session_id ? " · session " + src.pi_session_id.slice(0, 8) : "") + "]";
-    out.write(D + view.truncate(detail, cols) + R + "\r\n");
+    out.write(DIM + view.truncate(detail, cols) + RESET + "\r\n");
   }
 
   if (mode === "add") out.write(" add> " + input + "\r\n");
   else if (mode === "filter") out.write(" filter> " + input + "\r\n");
   else if (mode === "confirm-del" && sel) out.write(" 确认删除 " + sel.id + " 「" + view.truncate(sel.text, Math.max(1, cols - 20)) + "」?(y/n)\r\n");
-  if (status) out.write(D + view.truncate(" " + status, cols) + R + "\r\n");
+  if (status) out.write(DIM + view.truncate(" " + status, cols) + RESET + "\r\n");
 }
 
 // ---------- jump ----------
@@ -187,8 +186,8 @@ function handleKey(ch) {
     reload(); return render();
   }
   if (ch === "x" && rows[cursor]) { mode = "confirm-del"; return render(); }
-  if (ch === "a") { mode = "add"; input = ""; return render(); }
-  if (ch === "/") { mode = "filter"; input = filter; return render(); }
+  if (ch === "a") { mode = "add"; input = ""; status = ""; return render(); }
+  if (ch === "/") { mode = "filter"; input = filter; status = ""; return render(); }
   if (ch === "r") { reload(); status = "已刷新"; return render(); }
 }
 

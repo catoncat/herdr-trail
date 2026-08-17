@@ -55,6 +55,8 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+// 30s stale 回收的权衡:持锁者若合法运行 >30s 会被同伴拆锁 → 可能丢更新(tmp+rename 仍保不损坏)。
+// 我们的 mutate 都是毫秒级,可接受;若未来引入慢 mutate 需换成锁内心跳/进程探活。
 function acquireLock(lockDir, { lockTimeoutMs = 5000, lockRetryMs = 50, lockStaleMs = 30000 } = {}) {
   const start = Date.now();
   for (;;) {
@@ -110,4 +112,4 @@ function newId(existingIds) {
   }
 }
 
-module.exports = { PLUGIN_ID, FALLBACK_DIR, resolveStoreDir, storeFile, readStore, withMutation, newId };
+module.exports = { PLUGIN_ID, sleepSync, FALLBACK_DIR, resolveStoreDir, storeFile, readStore, withMutation, newId };

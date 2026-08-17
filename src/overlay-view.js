@@ -42,10 +42,7 @@ function ageLabel(iso) {
   return Math.floor(s / 86400) + "d";
 }
 
-function projectOf(todo) {
-  const cwd = todo.source?.cwd;
-  return cwd ? cwd.split("/").filter(Boolean).pop() : null;
-}
+const { projectOf } = require("./todos.js"); // 单一实现,勿再复制
 
 function pad(s, w) {
   const d = w - displayWidth(s);

@@ -8,6 +8,22 @@ const store = require("./store.js");
 const todos = require("./todos.js");
 const { planJump, execPlan, herdrRunner, resolveWorkspace } = require("./jump.js");
 
+function logLine(line, env = process.env) {
+  const dir = store.resolveStoreDir(env);
+  fs.mkdirSync(dir, { recursive: true }); // detached 路径可能先于任何 add 跑,目录未必存在
+  fs.appendFileSync(path.join(dir, "last-open.log"), line);
+}
+
+// session 丢失退化成裸 pi 时告知用户(detached 路径 stdout 无人看,走 herdr 通知)
+function notifyDegraded(todo, env = process.env) {
+  const herdr = env.HERDR_BIN_PATH || "herdr";
+  require("node:child_process").spawnSync(herdr, [
+    "notification", "show", "herd-trail: session 已丢失",
+    "--body", "session 文件被清理,已在 " + (todo.source?.cwd || "默认目录") + " 起裸 pi(" + todo.id + ")",
+    "--sound", "none",
+  ]);
+}
+
 function openById(idOrPrefix, env = process.env) {
   const file = store.storeFile(store.resolveStoreDir(env));
   const todo = todos.findTodo(store.readStore(file), idOrPrefix);
@@ -18,6 +34,7 @@ function openById(idOrPrefix, env = process.env) {
     currentWorkspace: resolveWorkspace(env),
   });
   const result = plan.steps.length ? execPlan(plan, runner) : null;
+  if (plan.note === "resume-bare") notifyDegraded(todo, env);
   return { todo, plan, result };
 }
 
@@ -57,14 +74,12 @@ function cmdOpen(args, { fail }) {
   if (delay > 0) {
     // detached 调用方已退出 overlay;静默执行,结果记日志便于排查
     setTimeout(() => {
-      const logFile = path.join(store.resolveStoreDir(), "last-open.log");
       try {
         const { todo, plan, result } = openById(id);
-        const line = new Date().toISOString() + " " + todo.id + " " + plan.note +
-          (result && !result.ok ? " FAIL " + JSON.stringify(result.out.map((o) => o.args.join(" ") + "=" + o.status)) : "") + "\n";
-        fs.appendFileSync(logFile, line);
+        logLine(new Date().toISOString() + " " + todo.id + " " + plan.note +
+          (result && !result.ok ? " FAIL " + JSON.stringify(result.out.map((o) => o.args.join(" ") + "=" + o.status)) : "") + "\n");
       } catch (e) {
-        fs.appendFileSync(logFile, new Date().toISOString() + " " + id + " ERROR " + e.message + "\n");
+        logLine(new Date().toISOString() + " " + id + " ERROR " + e.message + "\n");
       }
       process.exit(0);
     }, delay);

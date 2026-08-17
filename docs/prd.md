@@ -40,13 +40,13 @@ herd 全局共享 todolist。解决的真实问题：agent 干完活留下"善�
       "created_at": "2026-08-17T04:30:00.000Z",
       "done_at": null,
       "source": {                    // add 时从 env 自动捕获;人手动记则 agent 字段为 null
-        "kind": "pi",                // pi | human-shell(无 HERDR_PANE_ID 时)
+        "kind": "pi",                // pane.agent 如实记:pi | grok | ...;herdr 外/无 agent shell = human-shell
         "agent_name": "pi-startup-fix",   // herdr pane 名(可能为 null)
         "pane_id": "w2Q:pC",
         "workspace_id": "w2Q",
         "tab_id": "w2Q:t5",
         "cwd": "/Users/envvar/.pi",
-        "pi_session_id": "01a00df9-…",    // env PI_SESSION_ID
+        "pi_session_id": "01a00df9-…",    // 实测无 PI_SESSION_ID env;由 herdr pane get 的 agent_session 解析
         "pi_session_file": "/Users/envvar/.pi/agent/sessions/…/….jsonl"
       }
     }
