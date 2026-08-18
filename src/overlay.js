@@ -112,7 +112,7 @@ function render() {
 
   const inDetail = mode === "detail" || (mode === "edit" && editReturn === "detail") || (mode === "confirm-del" && confirmReturn === "detail");
   const groupHint = groupMode === "project" ? " · 按项目" : groupMode === "age" ? " · 按时间" : "";
-  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 待办 · " + counts.done + " 完成" + (currentProject ? " · 当前:" + currentProject : "") + groupHint + (filter ? "  /" + filter + "/" : "") + RESET);
+  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 备忘 · " + counts.done + " 完成" + (currentProject ? " · 当前:" + currentProject : "") + groupHint + (filter ? "  /" + filter + "/" : "") + RESET);
   const showHelp = lines >= 6;
   if (showHelp) {
     const helpKey = (mode === "add" || mode === "edit" || mode === "filter") ? "input" : inDetail ? "detail" : "normal";

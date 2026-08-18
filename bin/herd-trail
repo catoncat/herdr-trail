@@ -7,7 +7,7 @@ const store = require("../src/store.js");
 const todos = require("../src/todos.js");
 const { captureSource } = require("../src/provenance.js");
 
-const usage = `herd-trail — herd 全局共享 todolist(见 docs/prd.md)
+const usage = `herd-trail — herd 全局共享备忘(见 docs/prd.md)
 
 用法:
   herd-trail add "文本"           记录(溯源自动捕获)

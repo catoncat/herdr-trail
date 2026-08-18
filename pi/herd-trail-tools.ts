@@ -30,7 +30,7 @@ export default function (pi: ExtensionAPI) {
 		name: "trail_add",
 		label: "Trail Add",
 		description:
-			"Record a follow-up into the herd-wide shared todo list (herd-trail). Use for things the USER must handle later: cleanup, follow-ups waiting on external conditions, blockers needing human decisions, issues you noticed but are out of the current task's scope. One item per call; text must carry its own context (object + action + condition) so it makes sense outside this conversation. Provenance (which agent/pane/pi session) is captured automatically — never pass it yourself. Do NOT use for things you can finish within this session.",
+			"Record a follow-up into the herd-wide shared memo list (herd-trail 备忘). Use for things the USER must handle later: cleanup, follow-ups waiting on external conditions, blockers needing human decisions, issues you noticed but are out of the current task's scope. This is NOT the conversation-local todo tool (that one is your own work queue and dies with the session). One item per call; text must carry its own context (object + action + condition) so it makes sense outside this conversation. Provenance (which agent/pane/pi session) is captured automatically — never pass it yourself. Do NOT use for things you can finish within this session.",
 		parameters: Type.Object({
 			text: Type.String({ description: "Single-line item with full context, e.g. 'm1 恢复后 docker rm -f pi-fence-bundle pi-fence-kroki'" }),
 		}),
@@ -44,7 +44,7 @@ export default function (pi: ExtensionAPI) {
 		name: "trail_list",
 		label: "Trail List",
 		description:
-			"List the herd-wide shared todo list (herd-trail). Shows open items by default (id, status, age, source agent, project, text); pass all:true to include done. Check before adding to avoid duplicates.",
+			"List the herd-wide shared memo list (herd-trail 备忘). Shows open items by default (id, status, age, source agent, project, text); pass all:true to include done. Check before adding to avoid duplicates.",
 		parameters: Type.Object({
 			all: Type.Optional(Type.Boolean({ description: "Include done items (default: open only)" })),
 		}),
@@ -60,7 +60,7 @@ export default function (pi: ExtensionAPI) {
 		name: "trail_done",
 		label: "Trail Done",
 		description:
-			"Mark a herd-trail todo item as done. Use ONLY when the user explicitly says in this conversation that the item is handled/finished (e.g. '那条搞定了') — never infer it yourself. Errors if the id is unknown.",
+			"Mark a herd-trail memo as done. Use ONLY when the user explicitly says in this conversation that the item is handled/finished (e.g. '那条搞定了') — never infer it yourself. Errors if the id is unknown.",
 		parameters: Type.Object({
 			todo_id: Type.String({ description: "Todo id, e.g. 't-a3f9' (unique prefix ok)" }),
 		}),
@@ -74,7 +74,7 @@ export default function (pi: ExtensionAPI) {
 		name: "trail_edit",
 		label: "Trail Edit",
 		description:
-			"Rewrite the text of a herd-trail todo item (fix a typo, update wording as the task evolves). Keeps status and provenance untouched. Errors if the id is unknown or the new text is empty.",
+			"Rewrite the text of a herd-trail memo (fix a typo, update wording as the task evolves). Keeps status and provenance untouched. Errors if the id is unknown or the new text is empty.",
 		parameters: Type.Object({
 			todo_id: Type.String({ description: "Todo id, e.g. 't-a3f9' (unique prefix ok)" }),
 			text: Type.String({ description: "New single-line text with full context (object + action + condition)" }),
