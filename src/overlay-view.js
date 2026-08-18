@@ -77,26 +77,37 @@ function wrapText(s, width) {
   return lines;
 }
 
-// 列表行:状态符 + 文本(主,可扫读) + 右侧元信息(agent · 项目 · 年龄)。
+// 列表来源列:用 kind(pi/grok/human),不用 pane 名。
+// pane 名常是会话标题截断(多条长得一样),详情页里仍保留完整 agent_name。
+function sourceLabel(src) {
+  const kind = src?.kind;
+  if (!kind || kind === "human-shell") return "human";
+  return kind;
+}
+
+// 列表行:状态符 + 文本(主,可扫读) + 右侧元信息(来源 · 项目 · 年龄)。
 // 编号(id)不进列表——不可扫读;详情页和 CLI 里有。
+// 文本列 cap 80:宽屏不再把一行拉到 200 列。年龄永远用 created_at,
+// 避免 done 的瞬间从 20h 跳成 0s。
 // 返回 { text, meta } —— 由调用方决定拼接/配色(meta 右对齐,中间补空格)。
+const TEXT_CAP = 80;
 function formatRow(todo, cols) {
   const glyph = todo.status === "done" ? "●" : "○";
-  const when = todo.status === "done" && todo.done_at ? todo.done_at : todo.created_at;
   const parts = [];
-  const agent = todo.source?.agent_name;
-  if (agent) parts.push(truncate(agent, 20));
+  const src = sourceLabel(todo.source);
+  if (src) parts.push(src);
   const proj = projectOf(todo);
   if (proj) parts.push(truncate(proj, 12));
-  parts.push(ageLabel(when));
+  parts.push(ageLabel(todo.created_at));
   // 极窄(<24)只保 状态+文本
   if (cols < 24) {
     return { text: glyph + " " + truncate(todo.text, Math.max(1, cols - 2)), meta: "" };
   }
-  // meta 分级收缩:全量 → 去 agent → 只留年龄 → 全去(保证文本至少 ~12 列)
+  // meta 分级收缩:全量 → 去来源 → 只留年龄 → 全去(保证文本至少 ~12 列)
   const candidates = [parts.join(" · "), parts.slice(1).join(" · "), parts.at(-1), ""];
   const meta = candidates.find((m) => m !== undefined && cols - 2 - (m ? displayWidth(m) + 2 : 0) >= 12) ?? "";
-  const textW = Math.max(1, cols - 2 - (meta ? displayWidth(meta) + 2 : 0));
+  const avail = Math.max(1, cols - 2 - (meta ? displayWidth(meta) + 2 : 0));
+  const textW = Math.min(TEXT_CAP, avail);
   return { text: glyph + " " + truncate(todo.text, textW), meta };
 }
 
@@ -179,4 +190,4 @@ function flattenGroups(sections, rows) {
   return out;
 }
 
-module.exports = { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel, projectOf, groupRows, flattenGroups };
+module.exports = { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel, projectOf, groupRows, flattenGroups, sourceLabel, TEXT_CAP };

@@ -2,7 +2,7 @@
 // overlay 视图纯函数测试(docs/prd.md T5;窄 pane 截断见 §8)
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, groupRows, flattenGroups } = require("../src/overlay-view.js");
+const { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, groupRows, flattenGroups, sourceLabel, TEXT_CAP } = require("../src/overlay-view.js");
 
 test("displayWidth: ASCII=1,CJK=2", () => {
   assert.equal(displayWidth("abc"), 3);
@@ -23,13 +23,14 @@ const T = {
   source: { kind: "pi", agent_name: "Fix Startup", cwd: "/Users/x/herdr-trail" },
 };
 
-test("formatRow: 状态符+文本为主体,agent/项目/年龄在 meta;编号不进列表", () => {
+test("formatRow: 状态符+文本为主体,来源 kind/项目/年龄在 meta;编号不进列表", () => {
   const { text, meta } = formatRow(T, 80);
   assert.ok(displayWidth(text) + displayWidth(meta) <= 80);
   assert.match(text, /○/);
   assert.match(text, /m1 恢复后清理容器/);
   assert.doesNotMatch(text + meta, /t-a3f9/); // 编号不展示
-  assert.match(meta, /Fix Startup/);
+  assert.doesNotMatch(text + meta, /Fix Startup/); // pane 名不进列表
+  assert.match(meta, /pi/);
   assert.match(meta, /herdr-trail/);
   assert.match(meta, /2h/);
 });
@@ -44,11 +45,27 @@ test("formatRow: 窄屏只保 状态+文本,总宽不溢出(窄屏适配)", () =
   assert.match(r.text, /○/);
 });
 
-test("formatRow: done 条目用 ●;无 agent/项目时 meta 只有年龄", () => {
+test("formatRow: done 条目用 ●;年龄用 created_at 不跳成 0s", () => {
   const done = { ...T, status: "done", done_at: new Date().toISOString(), source: { kind: "human-shell", agent_name: null, cwd: null } };
   const { text, meta } = formatRow(done, 80);
   assert.match(text, /●/);
-  assert.equal(meta, "0s");
+  assert.match(meta, /human/);
+  assert.match(meta, /2h/);
+  assert.doesNotMatch(meta, /0s/);
+});
+
+test("formatRow: 宽屏文本列 cap,不拉满整行", () => {
+  const long = { ...T, text: "x".repeat(200) };
+  const { text, meta } = formatRow(long, 160);
+  assert.ok(displayWidth(text) <= TEXT_CAP + 2, "text=" + displayWidth(text)); // glyph+space
+  assert.ok(displayWidth(text) + displayWidth(meta) <= 160);
+});
+
+test("sourceLabel: kind 映射,human-shell → human", () => {
+  assert.equal(sourceLabel({ kind: "pi" }), "pi");
+  assert.equal(sourceLabel({ kind: "grok" }), "grok");
+  assert.equal(sourceLabel({ kind: "human-shell" }), "human");
+  assert.equal(sourceLabel({}), "human");
 });
 
 test("wrapText: 按显示宽度折行,西文优先空格断行", () => {

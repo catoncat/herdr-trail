@@ -98,7 +98,7 @@ function quit(code) {
 }
 
 const HELP = {
-  normal: " j/k 移动 · enter 跳源 · ! 送达 · o 详情 · g 分组 · a 新建 · e 编辑 · d done · x 删除 · / 过滤 · q 退出",
+  normal: " j/k 移动 · enter 跳源 · ! 送达 · o 详情 · g 分组 · a 新建 · e 编辑 · d done · x 删除 · / 过滤 · c 清过滤 · q 退出",
   detail: " enter 跳源 · ! 送达 · e 编辑 · d done · x 删除 · ←/q 返回列表",
   input:  " enter 确认 · esc 取消 · ←/→ 移动 · ctrl+u 清空",
 };
@@ -242,7 +242,11 @@ function dispatchKey(k) {
   if (mode === "detail") {
     if (k.t === "esc" || k.t === "left" || (k.t === "char" && (k.ch === "q" || k.ch === "h"))) { mode = "normal"; return render(); }
   } else {
-    if (k.t === "esc" || (k.t === "char" && k.ch === "q")) return quit(0);
+    if (k.t === "char" && k.ch === "q") return quit(0);
+    if (k.t === "esc") {
+      if (filter) { filter = ""; status = "已清除过滤"; reload(); return render(); }
+      return quit(0);
+    }
     if ((k.t === "char" && (k.ch === "o" || k.ch === "l" || k.ch === " ")) || k.t === "right") {
       if (!rows[cursor]) return;
       mode = "detail"; status = ""; return render();
@@ -277,6 +281,9 @@ function dispatchKey(k) {
   if (k.t === "char" && k.ch === "g" && mode === "normal") {
     groupMode = groupMode === "none" ? "project" : groupMode === "project" ? "age" : "none";
     return render();
+  }
+  if (k.t === "char" && k.ch === "c" && mode === "normal" && filter) {
+    filter = ""; status = "已清除过滤"; reload(); return render();
   }
   if (k.t === "char" && k.ch === "r") { reload(); status = "已刷新"; return render(); }
 }
