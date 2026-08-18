@@ -1,86 +1,74 @@
 # herdr-trail
 
-Herd-wide shared todo list — a [herdr](https://herdr.dev) plugin. Agents jot follow-ups mid-conversation; humans manage one global list; every entry links back to the conversation that created it.
+**One shared todo list for your whole herd.** Agents drop follow-ups, blockers, and cleanup tasks the moment they notice them. You get a single live list — every entry remembers exactly which conversation it came from, and jumps back with one keystroke.
 
-> 中文:agent 随手记,人统一看,每条都能跳回源头(pane 活着 focus,关了用 pi session resume)。
+<p>
+  <img src="docs/assets/overlay-list.png" width="860" alt="Trail list overlay">
+</p>
 
 ## Why
 
-Agents finish work and leave "clean this up later" / "follow up when X" notes that scroll away and die with the session. herdr-trail keeps them in one herd-wide list with provenance (which agent, which pane, which pi session), so a human can review everything in one overlay and jump straight back into the originating conversation to act on it.
+You run five pi sessions in parallel. One notices a flaky test it can't fix mid-task. Another finishes a migration that needs a follow-up check tomorrow. Today those thoughts die in scrollback. With herdr-trail the agent just calls `trail_add` and moves on — the entry lands in a herd-wide list with full provenance (agent, pane, project, cwd, pi session).
 
-Non-goals (v0): no reminders/notifications, no per-project backlogs, no priority/label machinery, no MCP.
+Open the list, hit `enter` on an entry, and you're **back in the exact conversation that wrote it** — focused live if the pane is alive, resumed via `pi --session` in a new tab if it's long gone.
+
+<p>
+  <img src="docs/assets/overlay-detail.png" width="860" alt="Entry detail with full provenance">
+</p>
 
 ## Install
 
-```bash
+```sh
 herdr plugin install catoncat/herdr-trail
-# or, while developing:
-herdr plugin link /path/to/herdr-trail
 ```
 
-Requires Node ≥ 18 (the plugin is dependency-free).
+That's it. The pi skill `herd-trail` ships with the plugin and is picked up automatically (`~/.pi/agent/skills` symlink on install), so your agents immediately know when and how to record entries.
 
-## Setup: pi tools + agent skill
+## Using it
 
-```bash
-herdr plugin action invoke agent-setup --plugin envvar.herd-trail
+**From any pi session** — the agent records things itself when something is worth your later attention:
+
+```
+trail_add   "staging 的 preview 环境超期了,下周清理"
 ```
 
-This installs (idempotently):
+**From anywhere in herdr** — open the floating list via the plugin action `Open trail list` (or bind a key):
 
-- `~/.pi/agent/extensions/herd-trail-tools.ts` — model-visible `trail_add` / `trail_list` tools (thin wrappers over the CLI; the CLI is the single source of truth)
-- `~/.pi/agent/skills/herd-trail/SKILL.md` — teaches agents when to record (human follow-ups, cross-session tasks, blockers) and when not to (anything finishable in-session)
+| Key | Action |
+|---|---|
+| `j/k` `↑/↓` | move |
+| `o` / `→` / `space` | detail page (full text + provenance) |
+| `enter` | jump back to the source conversation |
+| `a` / `e` | add / edit inline (readline-style: arrows, Home/End, ctrl+a/e/u/k/w, full CJK support) |
+| `d` / `x` | toggle done / delete (with confirm) |
+| `/` | filter · `esc/q` close |
 
-`/reload` in pi afterwards.
+The overlay polls the store every 2s, so entries written by other agents appear live.
 
-## Bind a key
+**From a shell** — a zero-dependency CLI is the single source of truth:
 
-```toml
-[[keys.command]]
-key = "prefix+t"
-type = "plugin_action"
-command = "envvar.herd-trail.open"
-description = "trail: herd-wide todo list"
+```sh
+bin/herd-trail add "修 payment 重试的幂等键"   # auto-captures provenance in an agent pane
+bin/herd-trail list --all                      # include done
+bin/herd-trail edit t-k7m2 "新文本"
+bin/herd-trail done t-k7m2 && bin/herd-trail undo t-k7m2
 ```
 
-## Use
+## Design
 
-**In conversation (agent or human):**
+- **Zero dependencies**, plain Node ≥ 18. Store is one JSON file with mkdir-lock + atomic rename; 20-process concurrency tested.
+- **Short ids** (`t-k7m2`), unique-prefix addressing everywhere.
+- **Provenance is automatic**: agent name, pane/workspace/tab, cwd, pi session id + file — captured at `trail_add` time, no flags needed.
+- Single-responsibility on purpose: no due dates, no reminders. It's a trail, not a calendar.
 
-```bash
-herd-trail add "m1 恢复后 docker rm -f pi-fence-bundle pi-fence-kroki"
-herd-trail list [--all] [--json] [--agent X] [--project Y]
-herd-trail show <id>          # full provenance
-herd-trail done|undo|rm <id>  # id accepts unique prefixes
-herd-trail edit <id> "new text"  # rewrite text, keep status + provenance
-herd-trail open <id>          # jump back to the source conversation
+Data lives in `herdr plugin config-dir envvar.herd-trail` (fallback `~/.local/share/herd-trail`).
+
+## Development
+
+```sh
+herdr plugin link .          # register locally
+node --test                  # 50 tests
 ```
-
-Provenance is captured automatically at add time (herdr pane, cwd, pi session file) — never pass it yourself.
-
-**Overlay (the key above, or `herdr plugin action invoke open --plugin envvar.herd-trail`):**
-
-| key | action |
-|-----|--------|
-| `j`/`k`/↑/↓ | move |
-| `enter` | jump to source: live pane → focus; closed → resume the pi session in a new tab |
-| `d` | toggle done (done sinks to the bottom, dimmed) |
-| `x` | delete (asks y/n) |
-| `a` | add (bottom-line input) |
-| `e` | edit text of the selected item |
-| `/` | filter |
-| `r` | refresh (also auto-refreshes every 2s on change) |
-| `q`/esc | close |
-
-## Data
-
-Single JSON file: `$(herdr plugin config-dir envvar.herd-trail)/todos.json` (fallback `~/.local/share/herd-trail/`). Writes take a mkdir lock, re-read before mutate, and land atomically via tmp+rename; a corrupt file is backed up (`todos.json.corrupt-<ts>`) and rebuilt empty. Concurrent adds from many panes are safe.
-
-## How jumping works
-
-- **Live pane** — `herdr agent focus <pane_id>` (works across workspaces; falls back to `tab focus`).
-- **Closed pane** — `tab create` in your current workspace, then `agent start --kind pi -- --session <file>`. If the session file is gone, degrades to a bare pi in the recorded cwd.
-- Layout changes run ~400ms after the overlay closes (a closing overlay restores the pre-overlay layout, which would silently undo the jump otherwise — trick borrowed from pane-mover).
 
 ## License
 
