@@ -12,6 +12,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const store = require("./store.js");
 const todos = require("./todos.js");
 const view = require("./overlay-view.js");
+const { KeyParser, LineEditor } = require("./lineedit.js");
 
 const { planJump, herdrRunner, resolveWorkspace } = require("./jump.js");
 
@@ -21,18 +22,24 @@ const FILE = store.storeFile(store.resolveStoreDir());
 
 // ---------- state ----------
 let rows = [];          // 当前可见(过滤+排序后)的 todo
+let counts = { open: 0, done: 0 };
 let cursor = 0;
-let mode = "normal";    // normal | add | edit | confirm-del | filter
-let input = "";         // add/filter 的行缓冲
+let mode = "normal";    // normal | detail | add | edit | confirm-del | filter
+let editor = new LineEditor();
 let filter = "";        // 已生效的过滤串
 let status = "";        // 底部状态行
+let editReturn = "normal";   // edit 提交/取消后回到哪(normal|detail)
+let confirmReturn = "normal";
 let pollTimer = null;
 let lastMtime = 0;
+const keyParser = new KeyParser();
 
 // ---------- data ----------
 function reload() {
   const data = store.readStore(FILE);
-  let list = todos.listTodos(data, { all: true });
+  const all = todos.listTodos(data, { all: true });
+  counts = { open: all.filter((t) => t.status === "open").length, done: all.filter((t) => t.status === "done").length };
+  let list = all;
   if (filter) {
     const f = filter.toLowerCase();
     list = list.filter((t) =>
@@ -58,6 +65,7 @@ function humanSource() {
 // ---------- ui ----------
 const out = process.stdout;
 const BOLD = "\x1b[1m", DIM = "\x1b[2m", INVERT = "\x1b[7m", RESET = "\x1b[0m";
+const GREEN = "\x1b[32m", CYAN = "\x1b[36m", YELLOW = "\x1b[33m";
 
 function enterUi() {
   out.write("\x1b[?1049h\x1b[?25l");
@@ -81,41 +89,73 @@ function quit(code) {
   process.exit(code);
 }
 
+const HELP = {
+  normal: " j/k 移动 · enter 跳源 · o 详情 · a 新建 · e 编辑 · d done · x 删除 · / 过滤 · q 退出",
+  detail: " enter 跳源 · e 编辑 · d done · x 删除 · ←/q 返回列表",
+  input:  " enter 确认 · esc 取消 · ←/→ 移动 · ctrl+u 清空",
+};
+
 function render() {
   const cols = out.columns || 80;
   const lines = out.rows || 24;
   out.write("\x1b[2J\x1b[H");
-  const head = " Trail — herd 全局 todolist" + (filter ? "  /" + filter + "/" : "");
-  out.write(BOLD + view.truncate(head, cols) + RESET + "\r\n");
-  // 高度自适应:矮 pane 依次砍 help、详情行,保 header+列表+状态(窄屏适配,PRD §8)
+  let rowNo = 0, inputRow = 0, inputCol = 1;
+  const w = (s) => { out.write(s + "\r\n"); rowNo += 1; };
+
+  const inDetail = mode === "detail" || (mode === "edit" && editReturn === "detail") || (mode === "confirm-del" && confirmReturn === "detail");
+  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 待办 · " + counts.done + " 完成" + (filter ? "  /" + filter + "/" : "") + RESET);
   const showHelp = lines >= 6;
-  const showDetail = lines >= 8 && mode === "normal" && rows.length > 0;
   if (showHelp) {
-    out.write(DIM + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · e 编辑 · / 过滤 · r 刷新 · q 退出", cols) + RESET + "\r\n");
+    const helpKey = (mode === "add" || mode === "edit" || mode === "filter") ? "input" : inDetail ? "detail" : "normal";
+    w(DIM + view.truncate(HELP[helpKey], cols) + RESET);
   }
 
-  const capacity = Math.max(1, lines - 2 - (showHelp ? 1 : 0) - (showDetail ? 1 : 0));
-  const [start, end] = view.visibleWindow(rows.length, cursor, capacity);
-  for (let i = start; i < end; i++) {
-    const row = view.formatRow(rows[i], cols);
-    const dim = rows[i].status === "done" ? DIM : "";
-    out.write((i === cursor ? INVERT + view.truncate(row, cols) + RESET : dim + view.truncate(row, cols) + RESET) + "\r\n");
+  if (inDetail) {
+    const sel = rows[cursor];
+    if (sel) {
+      const capacity = Math.max(1, lines - rowNo - 2);
+      const body = view.formatDetail(sel, cols).slice(0, capacity);
+      for (const ln of body) {
+        if (ln.kind === "head") w(" " + (sel.status === "done" ? GREEN : YELLOW) + ln.text + RESET);
+        else if (ln.kind === "text") w(" " + ln.text);
+        else if (ln.kind === "field") w(" " + DIM + ln.label + RESET + "  " + ln.value);
+        else w("");
+      }
+    } else {
+      mode = "normal"; // 条目被外部删了,退回列表
+    }
+  } else {
+    const capacity = Math.max(1, lines - rowNo - 2);
+    const [start, end] = view.visibleWindow(rows.length, cursor, capacity);
+    for (let i = start; i < end; i++) {
+      const t = rows[i];
+      const { text, meta } = view.formatRow(t, cols);
+      const gap = Math.max(1, cols - view.displayWidth(text) - view.displayWidth(meta));
+      if (i === cursor) {
+        w(INVERT + text + " ".repeat(gap) + meta + RESET);
+      } else if (t.status === "done") {
+        w(DIM + text + " ".repeat(gap) + meta + RESET);
+      } else {
+        w(text + " ".repeat(gap) + (meta ? DIM + meta + RESET : ""));
+      }
+    }
+    if (!rows.length) w(DIM + "  (空 — 按 a 新建)" + RESET);
   }
-  if (!rows.length) out.write(DIM + "  (空 — 按 a 新建)" + RESET + "\r\n");
 
-  // 选中条详情(全文+溯源),窄屏兜底
-  const sel = rows[cursor];
-  if (sel && showDetail) {
-    const src = sel.source ?? {};
-    const detail = " " + sel.id + " " + sel.text + "  [" + src.kind + (src.agent_name ? " · " + src.agent_name : "") + (src.pi_session_id ? " · session " + src.pi_session_id.slice(0, 8) : "") + "]";
-    out.write(DIM + view.truncate(detail, cols) + RESET + "\r\n");
+  if (mode === "add" || mode === "edit" || mode === "filter") {
+    const label = mode === "add" ? " add> " : mode === "edit" ? " edit> " : " filter> ";
+    w(label + editor.text);
+    inputRow = rowNo;
+    inputCol = view.displayWidth(label + editor.beforeCursor) + 1;
+  } else if (mode === "confirm-del" && rows[cursor]) {
+    const sel = rows[cursor];
+    w(" 确认删除 " + sel.id + " 「" + view.truncate(sel.text, Math.max(1, cols - 20)) + "」?(y/n)");
   }
+  if (status) w(DIM + view.truncate(" " + status, cols) + RESET);
 
-  if (mode === "add") out.write(" add> " + input + "\r\n");
-  else if (mode === "edit" && rows[cursor]) out.write(" edit> " + input + "\r\n");
-  else if (mode === "filter") out.write(" filter> " + input + "\r\n");
-  else if (mode === "confirm-del" && sel) out.write(" 确认删除 " + sel.id + " 「" + view.truncate(sel.text, Math.max(1, cols - 20)) + "」?(y/n)\r\n");
-  if (status) out.write(DIM + view.truncate(" " + status, cols) + RESET + "\r\n");
+  // 输入模式显示并定位光标;其余模式隐藏
+  if (inputRow) out.write("\x1b[?25h\x1b[" + inputRow + ";" + inputCol + "H");
+  else out.write("\x1b[?25l");
 }
 
 // ---------- jump ----------
@@ -139,69 +179,89 @@ function jumpSelected() {
 // ---------- input ----------
 
 process.stdin.on("data", (buf) => {
-  const s = buf.toString("latin1");
-  if (mode === "add" || mode === "edit" || mode === "filter") {
-    for (const ch of s) {
-      if (ch === "\r" || ch === "\n") {
-        const val = input; input = "";
-        if (mode === "add" && val.trim()) {
-          try { todos.addTodo(FILE, val, humanSource()); status = "已记录"; }
-          catch (e) { status = e.message; }
-        } else if (mode === "edit" && val.trim()) {
-          try { todos.updateTodo(FILE, rows[cursor].id, val); status = "已更新"; }
-          catch (e) { status = e.message; }
-        }
-        if (mode === "filter") filter = val;
-        mode = "normal"; reload(); return render();
-      }
-      if (ch === "\x1b") { input = ""; mode = "normal"; return render(); }
-      if (ch === "\x7f" || ch === "\b") { input = [...input].slice(0, -1).join(""); render(); continue; }
-      if (ch >= " " || ch > "\u007f") { input += ch; render(); }
-    }
-    return;
-  }
-  // 按键可能在一个 data 事件里成批到达("jj"、j 紧跟 enter),逐字符解析;
-  // 方向键是 \x1b[A/\x1b[B 序列,先匹配序列再落单字符。
-  for (let i = 0; i < s.length;) {
-    if (s.startsWith("\x1b[A", i) || s.startsWith("\x1bOA", i)) { i += 3; handleKey("up"); continue; }
-    if (s.startsWith("\x1b[B", i) || s.startsWith("\x1bOB", i)) { i += 3; handleKey("down"); continue; }
-    const ch = s[i++];
-    if (ch === "\x1b" && i < s.length && s[i] === "[") continue; // 未知序列开头,跳过
-    handleKey(ch);
-  }
+  for (const k of keyParser.feed(buf)) dispatchKey(k);
 });
 
-function handleKey(ch) {
+function submitInput() {
+  const val = editor.text; editor = new LineEditor();
+  if (mode === "add" && val.trim()) {
+    try { todos.addTodo(FILE, val, humanSource()); status = "已记录"; }
+    catch (e) { status = e.message; }
+  } else if (mode === "edit" && val.trim()) {
+    try { todos.updateTodo(FILE, rows[cursor].id, val); status = "已更新"; }
+    catch (e) { status = e.message; }
+  }
+  if (mode === "filter") filter = val;
+  mode = mode === "edit" ? editReturn : "normal";
+  reload(); render();
+}
+
+function cancelInput() {
+  editor = new LineEditor();
+  mode = mode === "edit" ? editReturn : "normal";
+  render();
+}
+
+function dispatchKey(k) {
+  if (mode === "add" || mode === "edit" || mode === "filter") {
+    if (k.t === "enter") return submitInput();
+    if (k.t === "esc") return cancelInput();
+    if (k.t === "up" || k.t === "down") return; // 行编辑无历史,忽略
+    if (editor.apply(k)) render();
+    return;
+  }
   if (mode === "confirm-del") {
-    if (ch === "y" || ch === "Y") {
+    if (k.t === "char" && (k.ch === "y" || k.ch === "Y")) {
       try { todos.removeTodo(FILE, rows[cursor].id); status = "已删除"; }
       catch (e) { status = e.message; }
       mode = "normal"; reload(); return render();
     }
-    mode = "normal"; status = ""; return render();
+    mode = confirmReturn; status = ""; return render();
   }
-  if (ch === "q" || ch === "\x1b" || ch === "\x03") return quit(0);
-  if (ch === "up" || ch === "k" || ch === "K") { cursor = Math.max(0, cursor - 1); return render(); }
-  if (ch === "down" || ch === "j" || ch === "J") { cursor = Math.min(rows.length - 1, cursor + 1); return render(); }
-  if (ch === "\r" || ch === "\n") return jumpSelected();
-  if (ch === "d" && rows[cursor]) {
+  // normal / detail 共用操作键
+  if (k.t === "ctrl" && k.key === "c") return quit(0);
+  if (mode === "detail") {
+    if (k.t === "esc" || k.t === "left" || (k.t === "char" && (k.ch === "q" || k.ch === "h"))) { mode = "normal"; return render(); }
+  } else {
+    if (k.t === "esc" || (k.t === "char" && k.ch === "q")) return quit(0);
+    if ((k.t === "char" && (k.ch === "o" || k.ch === "l" || k.ch === " ")) || k.t === "right") {
+      if (!rows[cursor]) return;
+      mode = "detail"; status = ""; return render();
+    }
+  }
+  if (k.t === "up" || (k.t === "char" && (k.ch === "k" || k.ch === "K"))) {
+    if (mode === "detail") return; cursor = Math.max(0, cursor - 1); return render();
+  }
+  if (k.t === "down" || (k.t === "char" && (k.ch === "j" || k.ch === "J"))) {
+    if (mode === "detail") return; cursor = Math.min(rows.length - 1, cursor + 1); return render();
+  }
+  if (k.t === "enter") return jumpSelected();
+  if (k.t === "char" && k.ch === "d" && rows[cursor]) {
     const t = rows[cursor];
     try { todos.setStatus(FILE, t.id, t.status === "done" ? "open" : "done"); }
     catch (e) { status = e.message; }
     reload(); return render();
   }
-  if (ch === "x" && rows[cursor]) { mode = "confirm-del"; return render(); }
-  if (ch === "e" && rows[cursor]) { mode = "edit"; input = rows[cursor].text; status = ""; return render(); }
-  if (ch === "a") { mode = "add"; input = ""; status = ""; return render(); }
-  if (ch === "/") { mode = "filter"; input = filter; status = ""; return render(); }
-  if (ch === "r") { reload(); status = "已刷新"; return render(); }
+  if (k.t === "char" && k.ch === "x" && rows[cursor]) {
+    confirmReturn = mode; mode = "confirm-del"; return render();
+  }
+  if (k.t === "char" && k.ch === "e" && rows[cursor]) {
+    editReturn = mode; mode = "edit"; editor = new LineEditor(rows[cursor].text); status = ""; return render();
+  }
+  if (k.t === "char" && k.ch === "a" && mode === "normal") {
+    mode = "add"; editor = new LineEditor(); status = ""; return render();
+  }
+  if (k.t === "char" && k.ch === "/" && mode === "normal") {
+    mode = "filter"; editor = new LineEditor(filter); status = ""; return render();
+  }
+  if (k.t === "char" && k.ch === "r") { reload(); status = "已刷新"; return render(); }
 }
 
 // ---------- poll + main ----------
 pollTimer = setInterval(() => {
   let m = 0;
   try { m = fs.statSync(FILE).mtimeMs; } catch { /* 文件可能尚未创建 */ }
-  if (m !== lastMtime) { reload(); if (mode === "normal") render(); }
+  if (m !== lastMtime) { reload(); if (mode === "normal" || mode === "detail") render(); }
 }, 2000);
 
 reload();

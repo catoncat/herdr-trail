@@ -49,29 +49,87 @@ function pad(s, w) {
   return d > 0 ? s + " ".repeat(d) : s;
 }
 
-// 列:id 6 | 状态 1 | agent ≤16 | 项目 ≤12 | 年龄 4 | 文本剩余。
-// agent/项目列宽随总宽弹性收缩(窄 pane 见 PRD §8),文本至少 1 列。总宽 <= cols。
-const OVERHEAD = 6 + 1 + 1 + 1 + 1 + 1 + 4 + 1; // id sp glyph sp sp age sp
+// 按显示宽度贪心折行;优先在空格断行(西文),CJK 任意处可断。
+function wrapText(s, width) {
+  const lines = [];
+  for (const raw of String(s).split("\n")) {
+    let line = "", w = 0, lastSpace = -1; // lastSpace: line 中最后一个空格的码点下标
+    for (const ch of raw) {
+      const cw = charWidth(ch.codePointAt(0));
+      if (w + cw > width) {
+        if (ch === " ") { lines.push(line); line = ""; w = 0; lastSpace = -1; continue; } // 空格恰在边界→此处断行
+        if (lastSpace >= 0) {
+          lines.push(line.slice(0, lastSpace));
+          line = line.slice(lastSpace + 1) + ch;
+          w = displayWidth(line);
+        } else {
+          lines.push(line);
+          line = ch; w = cw;
+        }
+        lastSpace = -1;
+      } else {
+        if (ch === " ") lastSpace = [...line].length;
+        line += ch; w += cw;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+// 列表行:状态符 + 文本(主,可扫读) + 右侧元信息(agent · 项目 · 年龄)。
+// 编号(id)不进列表——不可扫读;详情页和 CLI 里有。
+// 返回 { text, meta } —— 由调用方决定拼接/配色(meta 右对齐,中间补空格)。
 function formatRow(todo, cols) {
   const glyph = todo.status === "done" ? "●" : "○";
-  // 极窄(<20):只保 id/状态/文本
-  if (cols < 20) {
-    return pad(truncate(todo.id, 6), 6) + " " + glyph + " " + truncate(todo.text, Math.max(1, cols - 9));
-  }
-  const agent = todo.source?.agent_name || "-";
-  const project = projectOf(todo) || "-";
   const when = todo.status === "done" && todo.done_at ? todo.done_at : todo.created_at;
-  const avail = Math.max(3, cols - OVERHEAD);
-  let agentW = Math.min(16, Math.max(4, Math.floor(avail * 0.28)));
-  let projW = Math.min(12, Math.max(4, Math.floor(avail * 0.22)));
-  let textW = avail - agentW - projW;
-  // 超窄:先砍项目列再砍 agent 列,保 id/状态/文本(窄屏适配,PRD §8)
-  if (textW < 1) { projW = Math.max(0, projW + textW - 1); textW = avail - agentW - projW; }
-  if (textW < 1) { agentW = Math.max(0, agentW + textW - 1); textW = avail - agentW - projW; }
-  textW = Math.max(1, textW);
-  return pad(truncate(todo.id, 6), 6) + " " + glyph + " " +
-    pad(truncate(agent, agentW), agentW) + " " + pad(truncate(project, projW), projW) + " " +
-    pad(ageLabel(when), 4) + " " + truncate(todo.text, textW);
+  const parts = [];
+  const agent = todo.source?.agent_name;
+  if (agent) parts.push(truncate(agent, 20));
+  const proj = projectOf(todo);
+  if (proj) parts.push(truncate(proj, 12));
+  parts.push(ageLabel(when));
+  // 极窄(<24)只保 状态+文本
+  if (cols < 24) {
+    return { text: glyph + " " + truncate(todo.text, Math.max(1, cols - 2)), meta: "" };
+  }
+  // meta 分级收缩:全量 → 去 agent → 只留年龄 → 全去(保证文本至少 ~12 列)
+  const candidates = [parts.join(" · "), parts.slice(1).join(" · "), parts.at(-1), ""];
+  const meta = candidates.find((m) => m !== undefined && cols - 2 - (m ? displayWidth(m) + 2 : 0) >= 12) ?? "";
+  const textW = Math.max(1, cols - 2 - (meta ? displayWidth(meta) + 2 : 0));
+  return { text: glyph + " " + truncate(todo.text, textW), meta };
+}
+
+// 详情页正文:返回 [{ kind, text }],kind ∈ head|text|field|blank。
+// 样式(颜色/加粗)由 overlay.js 决定,这里只管内容与折行。
+function localTime(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+function formatDetail(todo, cols) {
+  const out = [];
+  const w = Math.max(10, cols - 2);
+  out.push({ kind: "head", text: (todo.status === "done" ? "● done" : "○ open") + " · " + todo.id });
+  out.push({ kind: "blank", text: "" });
+  for (const l of wrapText(todo.text, w)) out.push({ kind: "text", text: l });
+  out.push({ kind: "blank", text: "" });
+  const src = todo.source ?? {};
+  const fields = [];
+  fields.push(["来源", src.kind + (src.agent_name ? " · " + src.agent_name : "")]);
+  const proj = projectOf(todo);
+  if (proj) fields.push(["项目", proj]);
+  const loc = [src.pane_id, src.workspace_id, src.tab_id].filter(Boolean).join(" · ");
+  if (loc) fields.push(["位置", loc]);
+  if (src.pi_session_id) fields.push(["会话", src.pi_session_id]);
+  if (src.pi_session_file) fields.push(["文件", truncate(src.pi_session_file, w - 6)]);
+  if (src.cwd) fields.push(["目录", src.cwd]);
+  fields.push(["记录", localTime(todo.created_at) + " (" + ageLabel(todo.created_at) + "前)"]);
+  if (todo.updated_at) fields.push(["更新", localTime(todo.updated_at) + " (" + ageLabel(todo.updated_at) + "前)"]);
+  if (todo.done_at) fields.push(["完成", localTime(todo.done_at) + " (" + ageLabel(todo.done_at) + "前)"]);
+  for (const [label, value] of fields) out.push({ kind: "field", label, value, text: pad(label, 4) + " " + value });
+  return out;
 }
 
 // 游标居中窗口:返回 [start, end)。
@@ -81,4 +139,4 @@ function visibleWindow(total, cursor, capacity) {
   return [start, start + capacity];
 }
 
-module.exports = { displayWidth, truncate, formatRow, visibleWindow, ageLabel, projectOf };
+module.exports = { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel, projectOf };

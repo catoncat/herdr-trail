@@ -2,7 +2,7 @@
 // overlay 视图纯函数测试(docs/prd.md T5;窄 pane 截断见 §8)
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { displayWidth, truncate, formatRow, visibleWindow } = require("../src/overlay-view.js");
+const { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow } = require("../src/overlay-view.js");
 
 test("displayWidth: ASCII=1,CJK=2", () => {
   assert.equal(displayWidth("abc"), 3);
@@ -23,35 +23,52 @@ const T = {
   source: { kind: "pi", agent_name: "Fix Startup", cwd: "/Users/x/herdr-trail" },
 };
 
-test("formatRow: 列含 id/状态/agent/项目/年龄/文本;超宽截断", () => {
-  const row = formatRow(T, 80);
-  assert.ok(displayWidth(row) <= 80);
-  assert.match(row, /t-a3f9/);
-  assert.match(row, /○/);
-  assert.match(row, /Fix Startup/);
-  assert.match(row, /herdr-trail/);
-  assert.match(row, /2h/);
-  assert.match(row, /m1 恢复后清理容器/);
-  const narrow = formatRow(T, 30);
-  assert.ok(displayWidth(narrow) <= 30);
+test("formatRow: 状态符+文本为主体,agent/项目/年龄在 meta;编号不进列表", () => {
+  const { text, meta } = formatRow(T, 80);
+  assert.ok(displayWidth(text) + displayWidth(meta) <= 80);
+  assert.match(text, /○/);
+  assert.match(text, /m1 恢复后清理容器/);
+  assert.doesNotMatch(text + meta, /t-a3f9/); // 编号不展示
+  assert.match(meta, /Fix Startup/);
+  assert.match(meta, /herdr-trail/);
+  assert.match(meta, /2h/);
 });
 
-test("formatRow: 超窄(24/20 列)总宽仍不溢出(窄屏适配)", () => {
-  for (const cols of [40, 30, 24, 20, 16]) {
-    const row = formatRow(T, cols);
-    assert.ok(displayWidth(row) <= cols, "cols=" + cols + " 实际宽 " + displayWidth(row) + ": " + row);
+test("formatRow: 窄屏只保 状态+文本,总宽不溢出(窄屏适配)", () => {
+  for (const cols of [80, 40, 30, 24, 20, 16]) {
+    const { text, meta } = formatRow(T, cols);
+    assert.ok(displayWidth(text) + displayWidth(meta) <= cols, "cols=" + cols);
   }
-  // 极窄时 id/状态/文本仍在(项目/agent 列可收缩让位)
-  const r24 = formatRow(T, 24);
-  assert.match(r24, /t-a3f9/);
-  assert.match(r24, /○/);
+  const r = formatRow(T, 20);
+  assert.equal(r.meta, "");
+  assert.match(r.text, /○/);
 });
 
-test("formatRow: done 条目用 ●;无 agent 显示 -", () => {
-  const done = { ...T, status: "done", done_at: new Date().toISOString(), source: { ...T.source, agent_name: null } };
-  const row = formatRow(done, 80);
-  assert.match(row, /●/);
-  assert.match(row, /-/);
+test("formatRow: done 条目用 ●;无 agent/项目时 meta 只有年龄", () => {
+  const done = { ...T, status: "done", done_at: new Date().toISOString(), source: { kind: "human-shell", agent_name: null, cwd: null } };
+  const { text, meta } = formatRow(done, 80);
+  assert.match(text, /●/);
+  assert.equal(meta, "0s");
+});
+
+test("wrapText: 按显示宽度折行,西文优先空格断行", () => {
+  assert.deepEqual(wrapText("hello world foo", 11), ["hello world", "foo"]);
+  assert.deepEqual(wrapText("清理容器镜像缓存", 5), ["清理", "容器", "镜像", "缓存"]);
+  assert.deepEqual(wrapText("abc", 10), ["abc"]);
+  assert.deepEqual(wrapText("", 10), [""]);
+});
+
+test("formatDetail: 含状态头/全文/溯源字段/时间", () => {
+  const lines = formatDetail(T, 60);
+  const joined = lines.map((l) => l.text).join("\n");
+  assert.match(joined, /○ open · t-a3f9/);
+  assert.match(joined, /m1 恢复后清理容器/);
+  assert.match(joined, /来源\s+pi · Fix Startup/);
+  assert.match(joined, /项目\s+herdr-trail/);
+  assert.match(joined, /记录.*2h前/);
+  // 长文本折行:每一行都不超宽
+  const long = { ...T, text: "一段".repeat(40) + "的长文本" };
+  for (const l of formatDetail(long, 40)) assert.ok(displayWidth(l.text) <= 42, "超宽: " + l.text);
 });
 
 test("visibleWindow: 游标保持在窗口内", () => {
