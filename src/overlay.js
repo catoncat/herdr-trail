@@ -12,6 +12,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const store = require("./store.js");
 const todos = require("./todos.js");
 const view = require("./overlay-view.js");
+
 const { planJump, herdrRunner, resolveWorkspace } = require("./jump.js");
 
 const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
@@ -137,6 +138,7 @@ function jumpSelected() {
 // ---------- input ----------
 const decoder = new (require("node:string_decoder").StringDecoder)("utf8");
 process.stdin.on("data", (buf) => {
+  if (_firstData) { _firstData = false; process.stderr.write("HERD_TRAIL: stdin alive, first byte 0x" + buf[0]?.toString(16) + "\n"); }
   const s = decoder.write(buf);
   if (mode === "add" || mode === "filter") {
     for (const ch of s) {
@@ -158,8 +160,8 @@ process.stdin.on("data", (buf) => {
   // 按键可能在一个 data 事件里成批到达("jj"、j 紧跟 enter),逐字符解析;
   // 方向键是 \x1b[A/\x1b[B 序列,先匹配序列再落单字符。
   for (let i = 0; i < s.length;) {
-    if (s.startsWith("\x1b[A", i)) { i += 3; handleKey("up"); continue; }
-    if (s.startsWith("\x1b[B", i)) { i += 3; handleKey("down"); continue; }
+    if (s.startsWith("\x1b[A", i) || s.startsWith("\x1bOA", i)) { i += 3; handleKey("up"); continue; }
+    if (s.startsWith("\x1b[B", i) || s.startsWith("\x1bOB", i)) { i += 3; handleKey("down"); continue; }
     const ch = s[i++];
     if (ch === "\x1b" && i < s.length && s[i] === "[") continue; // 未知序列开头,跳过
     handleKey(ch);
@@ -176,8 +178,8 @@ function handleKey(ch) {
     mode = "normal"; status = ""; return render();
   }
   if (ch === "q" || ch === "\x1b" || ch === "\x03") return quit(0);
-  if (ch === "up" || ch === "k") { cursor = Math.max(0, cursor - 1); return render(); }
-  if (ch === "down" || ch === "j") { cursor = Math.min(rows.length - 1, cursor + 1); return render(); }
+  if (ch === "up" || ch === "k" || ch === "K") { cursor = Math.max(0, cursor - 1); return render(); }
+  if (ch === "down" || ch === "j" || ch === "J") { cursor = Math.min(rows.length - 1, cursor + 1); return render(); }
   if (ch === "\r" || ch === "\n") return jumpSelected();
   if (ch === "d" && rows[cursor]) {
     const t = rows[cursor];
