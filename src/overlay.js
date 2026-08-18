@@ -136,10 +136,9 @@ function jumpSelected() {
 }
 
 // ---------- input ----------
-const decoder = new (require("node:string_decoder").StringDecoder)("utf8");
+
 process.stdin.on("data", (buf) => {
-  if (_firstData) { _firstData = false; process.stderr.write("HERD_TRAIL: stdin alive, first byte 0x" + buf[0]?.toString(16) + "\n"); }
-  const s = decoder.write(buf);
+  const s = buf.toString("latin1");
   if (mode === "add" || mode === "filter") {
     for (const ch of s) {
       if (ch === "\r" || ch === "\n") {
