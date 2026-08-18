@@ -37,6 +37,11 @@ test("KeyParser: 裸 Esc 单字节即 esc;半截序列缓存待续", () => {
   assert.deepEqual(p2.feed(Buffer.from("D", "latin1")), [{ t: "left" }]);
 });
 
+test("KeyParser: tab is its own key, not ctrl+i", () => {
+  const p = new KeyParser();
+  assert.deepEqual(p.feed(Buffer.from("\t")), [{ t: "tab" }]);
+});
+
 test("KeyParser: 混合输入逐键分发(成批到达)", () => {
   const p = new KeyParser();
   const keys = p.feed(Buffer.from("ab\x1b[D\r", "latin1"));

@@ -85,19 +85,34 @@ function sourceLabel(src) {
   return kind;
 }
 
+// Inbox is two tabs: open | done. Counts sit after the label so they
+// never look like keybindings. Overlay always groups by project.
+function filterByStatus(rows, statusFilter) {
+  return rows.filter((t) => t.status === statusFilter);
+}
+function statusTabs(statusFilter, counts) {
+  return [
+    { id: "open", label: "open", count: counts.open, on: statusFilter === "open" },
+    { id: "done", label: "done", count: counts.done, on: statusFilter === "done" },
+  ];
+}
+
 // 列表行:状态符 + 文本(主,可扫读) + 右侧元信息(来源 · 项目 · 年龄)。
+// 按项目分组时 hideProject:项目名已在 section header,行内不再重复。
 // 编号(id)不进列表——不可扫读;详情页和 CLI 里有。
 // 文本列 cap 80:宽屏不再把一行拉到 200 列。年龄永远用 created_at,
 // 避免 done 的瞬间从 20h 跳成 0s。
 // 返回 { text, meta } —— 由调用方决定拼接/配色(meta 右对齐,中间补空格)。
 const TEXT_CAP = 80;
-function formatRow(todo, cols) {
+function formatRow(todo, cols, opts = {}) {
   const glyph = todo.status === "done" ? "●" : "○";
   const parts = [];
   const src = sourceLabel(todo.source);
   if (src) parts.push(src);
-  const proj = projectOf(todo);
-  if (proj) parts.push(truncate(proj, 12));
+  if (!opts.hideProject) {
+    const proj = projectOf(todo);
+    if (proj) parts.push(truncate(proj, 12));
+  }
   parts.push(ageLabel(todo.created_at));
   // 极窄(<24)只保 状态+文本
   if (cols < 24) {
@@ -128,17 +143,17 @@ function formatDetail(todo, cols) {
   out.push({ kind: "blank", text: "" });
   const src = todo.source ?? {};
   const fields = [];
-  fields.push(["来源", src.kind + (src.agent_name ? " · " + src.agent_name : "")]);
+  fields.push(["from", src.kind + (src.agent_name ? " · " + src.agent_name : "")]);
   const proj = projectOf(todo);
-  if (proj) fields.push(["项目", proj]);
+  if (proj) fields.push(["proj", proj]);
   const loc = [src.pane_id, src.workspace_id, src.tab_id].filter(Boolean).join(" · ");
-  if (loc) fields.push(["位置", loc]);
-  if (src.pi_session_id) fields.push(["会话", src.pi_session_id]);
-  if (src.pi_session_file) fields.push(["文件", truncate(src.pi_session_file, w - 6)]);
-  if (src.cwd) fields.push(["目录", src.cwd]);
-  fields.push(["记录", localTime(todo.created_at) + " (" + ageLabel(todo.created_at) + "前)"]);
-  if (todo.updated_at) fields.push(["更新", localTime(todo.updated_at) + " (" + ageLabel(todo.updated_at) + "前)"]);
-  if (todo.done_at) fields.push(["完成", localTime(todo.done_at) + " (" + ageLabel(todo.done_at) + "前)"]);
+  if (loc) fields.push(["pane", loc]);
+  if (src.pi_session_id) fields.push(["sess", src.pi_session_id]);
+  if (src.pi_session_file) fields.push(["file", truncate(src.pi_session_file, w - 6)]);
+  if (src.cwd) fields.push(["cwd", src.cwd]);
+  fields.push(["added", localTime(todo.created_at) + " (" + ageLabel(todo.created_at) + " ago)"]);
+  if (todo.updated_at) fields.push(["edit", localTime(todo.updated_at) + " (" + ageLabel(todo.updated_at) + " ago)"]);
+  if (todo.done_at) fields.push(["done", localTime(todo.done_at) + " (" + ageLabel(todo.done_at) + " ago)"]);
   for (const [label, value] of fields) out.push({ kind: "field", label, value, text: pad(label, 4) + " " + value });
   return out;
 }
@@ -150,44 +165,50 @@ function visibleWindow(total, cursor, capacity) {
   return [start, start + capacity];
 }
 
-// 分组:none 一段无 header;project 按项目(首次出现序);age 按今天/本周/更早(created_at)。
-// 返回 [{ header, items }] —— header 为 null 表示不画标题。opts.now / opts.projectOf 注入便于单测。
+// Two views: project (sectioned) or time (flat, newest-first already in rows).
+// Project group order: current project first, then others by newest item.
+function newestCreated(items) {
+  let m = 0;
+  for (const t of items) {
+    const ts = Date.parse(t.created_at) || 0;
+    if (ts > m) m = ts;
+  }
+  return m;
+}
 function groupRows(rows, mode, opts = {}) {
-  const now = opts.now ?? Date.now();
   const projOf = opts.projectOf ?? projectOf;
-  if (mode === "none" || !rows.length) return [{ header: null, items: rows.slice() }];
-  if (mode === "project") {
-    const map = new Map();
-    for (const t of rows) {
-      const k = projOf(t) || "(无项目)";
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(t);
-    }
-    return [...map.entries()].map(([header, items]) => ({ header, items }));
+  if (mode === "time" || mode === "none" || !rows.length) {
+    return [{ header: null, items: rows.slice() }];
   }
-  if (mode === "age") {
-    const buckets = [
-      { header: "今天", items: [], cutoff: now - 86400e3 },
-      { header: "本周", items: [], cutoff: now - 7 * 86400e3 },
-      { header: "更早", items: [], cutoff: -Infinity },
-    ];
-    for (const t of rows) {
-      const ts = Date.parse(t.created_at) || 0;
-      buckets.find((b) => ts >= b.cutoff).items.push(t);
-    }
-    return buckets.filter((b) => b.items.length).map(({ header, items }) => ({ header, items }));
+  const map = new Map();
+  for (const t of rows) {
+    const k = projOf(t) || "(no project)";
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(t);
   }
-  return [{ header: null, items: rows.slice() }];
+  const current = opts.currentProject;
+  const keys = [...map.keys()].sort((a, b) => {
+    if (current) {
+      if (a === current && b !== current) return -1;
+      if (b === current && a !== current) return 1;
+    }
+    return newestCreated(map.get(b)) - newestCreated(map.get(a));
+  });
+  return keys.map((header) => ({ header, items: map.get(header) }));
 }
 
 // 把分组展开成可渲染行:{kind:'header',text} | {kind:'row',idx}。idx 指向 rows 下标。
 function flattenGroups(sections, rows) {
   const out = [];
   for (const sec of sections) {
-    if (sec.header) out.push({ kind: "header", text: sec.header + "  (" + sec.items.length + ")" });
+    if (sec.header) out.push({ kind: "header", text: sec.header });
     for (const t of sec.items) out.push({ kind: "row", idx: rows.indexOf(t) });
   }
   return out;
 }
 
-module.exports = { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel, projectOf, groupRows, flattenGroups, sourceLabel, TEXT_CAP };
+module.exports = {
+  displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel,
+  projectOf, groupRows, flattenGroups, sourceLabel, TEXT_CAP,
+  filterByStatus, statusTabs,
+};

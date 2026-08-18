@@ -42,12 +42,14 @@ trail_add   "staging 的 preview 环境超期了,下周清理"
 | `o` / `→` / `space` | detail page (full text + provenance) |
 | `enter` | jump back to the source conversation (silent) |
 | `!` | jump **and** deliver the memo as a task to that session |
-| `g` | cycle grouping: none → project → age |
-| `a` / `e` | add / edit inline (readline-style: arrows, Home/End, ctrl+a/e/u/k/w, full CJK support) |
+| `tab` `1` `2` | open / done tabs |
+| `g` | by project (default) ↔ by time |
+| `a` / `e` | add / edit inline (arrows, Home/End, ctrl+a/e/u/k/w, CJK) |
 | `d` / `x` | toggle done / delete (with confirm) |
-| `/` | filter · `esc/q` close |
+| `/` | find · `c` / `esc` clear |
+| `q` | close |
 
-Opening the list from a pane **pins that pane's project to the top**. The overlay polls the store every 2s, so memos written by other agents appear live.
+Default view is **open**, grouped by project (current project first). Tabs live in the header; actions stay in the footer. The overlay polls the store every 2s, so memos written by other agents appear live.
 
 **From a shell** — a zero-dependency CLI is the single source of truth:
 
@@ -72,7 +74,7 @@ Data lives in `herdr plugin config-dir envvar.herd-trail` (fallback `~/.local/sh
 
 ```sh
 herdr plugin link .          # register locally
-node --test                  # 67 tests
+node --test                  # 71 tests
 ```
 
 ## License

@@ -33,9 +33,10 @@ let counts = { open: 0, done: 0 };
 let cursor = 0;
 let mode = "normal";    // normal | detail | add | edit | confirm-del | filter
 let editor = new LineEditor();
-let filter = "";        // 已生效的过滤串
-let groupMode = "none"; // none | project | age —— g 循环
-let status = "";        // 底部状态行
+let filter = "";        // text filter
+let statusFilter = "open"; // open | done — header tabs, Tab/1/2
+let groupMode = "project"; // project | time — g toggles, shown on the right
+let status = "";        // prompt-line toast
 let editReturn = "normal";   // edit 提交/取消后回到哪(normal|detail)
 let confirmReturn = "normal";
 let pollTimer = null;
@@ -45,9 +46,12 @@ const keyParser = new KeyParser();
 // ---------- data ----------
 function reload() {
   const data = store.readStore(FILE);
-  const all = todos.listTodos(data, { all: true, prioritize: currentProject });
+  const all = todos.listTodos(data, {
+    all: true,
+    prioritize: groupMode === "project" ? currentProject : null,
+  });
   counts = { open: all.filter((t) => t.status === "open").length, done: all.filter((t) => t.status === "done").length };
-  let list = all;
+  let list = view.filterByStatus(all, statusFilter);
   if (filter) {
     const f = filter.toLowerCase();
     list = list.filter((t) =>
@@ -97,80 +101,110 @@ function quit(code) {
   process.exit(code);
 }
 
-const HELP = {
-  normal: " j/k 移动 · enter 跳源 · ! 送达 · o 详情 · g 分组 · a 新建 · e 编辑 · d done · x 删除 · / 过滤 · c 清过滤 · q 退出",
-  detail: " enter 跳源 · ! 送达 · e 编辑 · d done · x 删除 · ←/q 返回列表",
-  input:  " enter 确认 · esc 取消 · ←/→ 移动 · ctrl+u 清空",
+const FOOTER = {
+  list:   " ↵ jump   ! deliver   o detail     a add  e edit  d done  x del     / find   g view   q quit",
+  detail: " ↵ jump   ! deliver     e edit  d done  x del     ← back",
+  input:  " ↵ ok     esc cancel",
+  confirm:" y yes   n no",
 };
+
+function goto(row, col) { out.write("\x1b[" + row + ";" + col + "H"); }
+function paint(row, s) { goto(row, 1); out.write(s + "\x1b[K"); }
+
+function setStatusFilter(next) {
+  if (next === statusFilter) return;
+  statusFilter = next;
+  cursor = 0;
+  reload();
+}
 
 function render() {
   const cols = out.columns || 80;
-  const lines = out.rows || 24;
+  const lines = Math.max(8, out.rows || 24);
   out.write("\x1b[2J\x1b[H");
-  let rowNo = 0, inputRow = 0, inputCol = 1;
-  const w = (s) => { out.write(s + "\r\n"); rowNo += 1; };
-
+  const footerRow = lines;
+  const promptRow = lines - 1;
+  const bodyTop = 3;
+  const bodyH = Math.max(1, promptRow - bodyTop);
   const inDetail = mode === "detail" || (mode === "edit" && editReturn === "detail") || (mode === "confirm-del" && confirmReturn === "detail");
-  const groupHint = groupMode === "project" ? " · 按项目" : groupMode === "age" ? " · 按时间" : "";
-  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 备忘 · " + counts.done + " 完成" + (currentProject ? " · 当前:" + currentProject : "") + groupHint + (filter ? "  /" + filter + "/" : "") + RESET);
-  const showHelp = lines >= 6;
-  if (showHelp) {
-    const helpKey = (mode === "add" || mode === "edit" || mode === "filter") ? "input" : inDetail ? "detail" : "normal";
-    w(DIM + view.truncate(HELP[helpKey], cols) + RESET);
-  }
 
+  // --- top: open/done tabs left, view mode right ---
+  const tabs = view.statusTabs(statusFilter, counts);
+  let tabLine = " ";
+  let tabsW = 1;
+  for (const t of tabs) {
+    const label = " " + t.label + " " + t.count + " ";
+    tabLine += (t.on ? INVERT : DIM) + label + RESET + " ";
+    tabsW += view.displayWidth(label) + 1;
+  }
+  if (filter) {
+    const f = " /" + filter + "/";
+    tabLine += DIM + f + RESET;
+    tabsW += view.displayWidth(f);
+  }
+  const viewHint = groupMode === "time" ? "by time" : "by project";
+  const gap = Math.max(2, cols - tabsW - view.displayWidth(viewHint) - 1);
+  paint(1, tabLine + " ".repeat(gap) + DIM + viewHint + RESET);
+
+  // --- middle: list or detail ---
   if (inDetail) {
     const sel = rows[cursor];
-    if (sel) {
-      const capacity = Math.max(1, lines - rowNo - 2);
-      const body = view.formatDetail(sel, cols).slice(0, capacity);
-      for (const ln of body) {
-        if (ln.kind === "head") w(" " + (sel.status === "done" ? GREEN : YELLOW) + ln.text + RESET);
-        else if (ln.kind === "text") w(" " + ln.text);
-        else if (ln.kind === "field") w(" " + DIM + ln.label + RESET + "  " + ln.value);
-        else w("");
-      }
-    } else {
-      mode = "normal"; // 条目被外部删了,退回列表
+    if (!sel) { mode = "normal"; return render(); }
+    const body = view.formatDetail(sel, cols).slice(0, bodyH);
+    for (let i = 0; i < bodyH; i++) {
+      const ln = body[i];
+      if (!ln) { paint(bodyTop + i, ""); continue; }
+      if (ln.kind === "head") paint(bodyTop + i, " " + (sel.status === "done" ? GREEN : YELLOW) + ln.text + RESET);
+      else if (ln.kind === "text") paint(bodyTop + i, " " + ln.text);
+      else if (ln.kind === "field") paint(bodyTop + i, " " + DIM + ln.label + RESET + "  " + ln.value);
+      else paint(bodyTop + i, "");
     }
   } else {
-    const capacity = Math.max(1, lines - rowNo - 2);
-    const sections = view.groupRows(rows, groupMode);
+    const sections = view.groupRows(rows, groupMode, { currentProject });
     const display = view.flattenGroups(sections, rows);
     const cursorPos = Math.max(0, display.findIndex((d) => d.kind === "row" && d.idx === cursor));
-    const [start, end] = view.visibleWindow(display.length, cursorPos, capacity);
-    for (let i = start; i < end; i++) {
+    const [start, end] = view.visibleWindow(display.length, cursorPos, bodyH);
+    let painted = 0;
+    for (let i = start; i < end; i++, painted++) {
       const d = display[i];
+      const row = bodyTop + painted;
       if (d.kind === "header") {
-        w(DIM + CYAN + "── " + d.text + RESET);
+        paint(row, " " + CYAN + d.text + RESET);
         continue;
       }
       const t = rows[d.idx];
-      const { text, meta } = view.formatRow(t, cols);
+      const { text, meta } = view.formatRow(t, cols, { hideProject: groupMode === "project" });
       const gap = Math.max(1, cols - view.displayWidth(text) - view.displayWidth(meta));
-      if (d.idx === cursor) {
-        w(INVERT + text + " ".repeat(gap) + meta + RESET);
-      } else if (t.status === "done") {
-        w(DIM + text + " ".repeat(gap) + meta + RESET);
-      } else {
-        w(text + " ".repeat(gap) + (meta ? DIM + meta + RESET : ""));
-      }
+      if (d.idx === cursor) paint(row, INVERT + text + " ".repeat(gap) + meta + RESET);
+      else if (t.status === "done") paint(row, DIM + text + " ".repeat(gap) + meta + RESET);
+      else paint(row, text + " ".repeat(gap) + (meta ? DIM + meta + RESET : ""));
     }
-    if (!rows.length) w(DIM + "  (空 — 按 a 新建)" + RESET);
+    if (!rows.length) paint(bodyTop, DIM + "  nothing here" + RESET);
+    for (let i = painted; i < bodyH; i++) paint(bodyTop + i, "");
   }
 
+  // --- prompt line (above footer) ---
+  let inputRow = 0, inputCol = 1;
   if (mode === "add" || mode === "edit" || mode === "filter") {
-    const label = mode === "add" ? " add> " : mode === "edit" ? " edit> " : " filter> ";
-    w(label + editor.text);
-    inputRow = rowNo;
+    const label = mode === "add" ? " add  " : mode === "edit" ? " edit " : " find ";
+    paint(promptRow, label + editor.text);
+    inputRow = promptRow;
     inputCol = view.displayWidth(label + editor.beforeCursor) + 1;
   } else if (mode === "confirm-del" && rows[cursor]) {
     const sel = rows[cursor];
-    w(" 确认删除 " + sel.id + " 「" + view.truncate(sel.text, Math.max(1, cols - 20)) + "」?(y/n)");
+    paint(promptRow, " delete " + sel.id + " \"" + view.truncate(sel.text, Math.max(1, cols - 24)) + "\" ?");
+  } else if (status) {
+    paint(promptRow, DIM + " " + view.truncate(status, cols - 2) + RESET);
+  } else {
+    paint(promptRow, "");
   }
-  if (status) w(DIM + view.truncate(" " + status, cols) + RESET);
 
-  // 输入模式显示并定位光标;其余模式隐藏
+  // --- bottom: actions always visible ---
+  const footerKey = (mode === "add" || mode === "edit" || mode === "filter") ? "input"
+    : mode === "confirm-del" ? "confirm"
+    : inDetail ? "detail" : "list";
+  paint(footerRow, DIM + view.truncate(FOOTER[footerKey], cols) + RESET);
+
   if (inputRow) out.write("\x1b[?25h\x1b[" + inputRow + ";" + inputCol + "H");
   else out.write("\x1b[?25l");
 }
@@ -185,14 +219,14 @@ function jumpSelected({ deliver = false } = {}) {
       fileExists: (p) => fs.existsSync(p),
       currentWorkspace: resolveWorkspace(),
     });
-    if (plan.note === "none") { status = "该条无源可跳(herdr 外手动记录)"; return render(); }
+    if (plan.note === "none") { status = "no source to jump to"; return render(); }
     const args = [BIN, "open", sel.id, "--delay", "400"];
     if (deliver) args.push("--deliver");
     spawn(process.execPath, args, {
       detached: true, stdio: "ignore", env: process.env,
     }).unref();
     quit(0);
-  } catch (e) { status = (deliver ? "送达失败: " : "跳源失败: ") + e.message; render(); }
+  } catch (e) { status = (deliver ? "deliver failed: " : "jump failed: ") + e.message; render(); }
 }
 
 // ---------- input ----------
@@ -204,10 +238,10 @@ process.stdin.on("data", (buf) => {
 function submitInput() {
   const val = editor.text; editor = new LineEditor();
   if (mode === "add" && val.trim()) {
-    try { todos.addTodo(FILE, val, humanSource()); status = "已记录"; }
+    try { todos.addTodo(FILE, val, humanSource()); status = "added"; }
     catch (e) { status = e.message; }
   } else if (mode === "edit" && val.trim()) {
-    try { todos.updateTodo(FILE, rows[cursor].id, val); status = "已更新"; }
+    try { todos.updateTodo(FILE, rows[cursor].id, val); status = "updated"; }
     catch (e) { status = e.message; }
   }
   if (mode === "filter") filter = val;
@@ -231,7 +265,7 @@ function dispatchKey(k) {
   }
   if (mode === "confirm-del") {
     if (k.t === "char" && (k.ch === "y" || k.ch === "Y")) {
-      try { todos.removeTodo(FILE, rows[cursor].id); status = "已删除"; }
+      try { todos.removeTodo(FILE, rows[cursor].id); status = "deleted"; }
       catch (e) { status = e.message; }
       mode = "normal"; reload(); return render();
     }
@@ -244,7 +278,7 @@ function dispatchKey(k) {
   } else {
     if (k.t === "char" && k.ch === "q") return quit(0);
     if (k.t === "esc") {
-      if (filter) { filter = ""; status = "已清除过滤"; reload(); return render(); }
+      if (filter) { filter = ""; status = "filter cleared"; reload(); return render(); }
       return quit(0);
     }
     if ((k.t === "char" && (k.ch === "o" || k.ch === "l" || k.ch === " ")) || k.t === "right") {
@@ -279,13 +313,19 @@ function dispatchKey(k) {
     mode = "filter"; editor = new LineEditor(filter); status = ""; return render();
   }
   if (k.t === "char" && k.ch === "g" && mode === "normal") {
-    groupMode = groupMode === "none" ? "project" : groupMode === "project" ? "age" : "none";
+    groupMode = groupMode === "project" ? "time" : "project";
+    return render();
+  }
+  if ((k.t === "tab" || (k.t === "char" && (k.ch === "1" || k.ch === "2"))) && (mode === "normal" || mode === "detail")) {
+    if (k.t === "tab") setStatusFilter(statusFilter === "open" ? "done" : "open");
+    else setStatusFilter(k.ch === "1" ? "open" : "done");
+    if (mode === "detail") mode = "normal";
     return render();
   }
   if (k.t === "char" && k.ch === "c" && mode === "normal" && filter) {
-    filter = ""; status = "已清除过滤"; reload(); return render();
+    filter = ""; status = "filter cleared"; reload(); return render();
   }
-  if (k.t === "char" && k.ch === "r") { reload(); status = "已刷新"; return render(); }
+  if (k.t === "char" && k.ch === "r") { reload(); status = "refreshed"; return render(); }
 }
 
 // ---------- poll + main ----------

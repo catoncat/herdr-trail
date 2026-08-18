@@ -37,6 +37,7 @@ class KeyParser {
         keys.push({ t: "esc" }); i += 1; continue; // 裸 Esc(单字节 chunk)
       }
       if (ch === "\r" || ch === "\n") { keys.push({ t: "enter" }); i += 1; continue; }
+      if (ch === "\t") { keys.push({ t: "tab" }); i += 1; continue; }
       if (ch === "\x7f" || ch === "\b") { keys.push({ t: "backspace" }); i += 1; continue; }
       const cp = ch.codePointAt(0);
       if (cp >= 1 && cp <= 26) { keys.push({ t: "ctrl", key: String.fromCodePoint(cp + 96) }); i += 1; continue; }
