@@ -7,6 +7,9 @@ const { spawnSync } = require("node:child_process");
 const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
 const pluginId = process.env.HERDR_PLUGIN_ID ?? "envvar.herd-trail";
 
+// 调试输出走 stderr(herdr plugin log 可见),不污染 stdout。
+function diag(msg) { process.stderr.write("HERD_TRAIL: " + msg + "\n"); }
+
 const res = spawnSync(
   herdr,
   ["plugin", "pane", "open", "--plugin", pluginId, "--entrypoint", "list", "--focus"],
