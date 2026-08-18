@@ -1,6 +1,6 @@
 ---
 name: herd-trail
-description: "herd 全局共享 todolist。当对话中出现需要用户后续处理的事(善后、跟进、需要人决策的阻塞、跨会话任务)时随手记入全局清单;也用于在对话里查看清单现状。溯源(哪个 agent/会话)自动落库,用户可从 herdr 里一键跳回本对话。"
+description: "herd 全局共享 todolist。对话中出现需要用户后续处理的事(清理、跟进、阻塞、跨会话)时随手记入;也可随时查清单现状。"
 ---
 
 # herd-trail — herd 全局 todolist
@@ -22,6 +22,7 @@ description: "herd 全局共享 todolist。当对话中出现需要用户后续�
   坏:"清理容器"。好:"m1 恢复后 docker rm -f pi-fence-bundle pi-fence-kroki"。
 - 重复前先 `herd-trail list` 查重。
 - 溯源**不用你管**:add 时自动捕获 pane/cwd/pi session,不要自己传。
+- `done` 闭环:仅当用户在本对话明确表示该事项已办/处理完,不要自己判断。
 
 ## 命令
 
@@ -29,7 +30,7 @@ description: "herd 全局共享 todolist。当对话中出现需要用户后续�
 herd-trail add "文本"            # 记录
 herd-trail list [--all]        # 看清单(默认 open)
 herd-trail edit <id> "新文本"   # 改文本(保留状态/溯源;笔误随手改,不改状态)
-herd-trail done <id>           # 闭环:仅当用户在本对话明确表示该事项已办/处理完,不要自己判断
+herd-trail done <id>           # 闭环(规则见上)
 herd-trail show <id>           # 看某条溯源详情
 ```
 

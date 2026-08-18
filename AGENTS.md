@@ -61,6 +61,7 @@ herdr 插件：**herd 全局共享 todolist**。agent 在对话中随手记/随�
 - store：单 JSON 文件；写路径 = mkdir 锁（50ms 退避，5s 超时，30s stale 回收）→ 重读 → mutate → tmp+rename
 - todo id：短 id(`t-` + 4 位 base36，冲突重摇）
 - commit:`<type>(scope): <summary>`，中文动词开头，<50 字，无句号，原子提交
+- **skill 规则与 trail_* 工具描述必须同义**(两 surface 都常驻上下文);改任一处须同步另一处,`test/skill-tools-sync.test.js` 拦截漂移
 - 输出偏好：竖向布局图表；回复不超过一屏
 
 ## 实现状态(2026-08-17 M1-M3 完成)
@@ -68,6 +69,7 @@ herdr 插件：**herd 全局共享 todolist**。agent 在对话中随手记/随�
 - M1 数据层+CLI / M2 pi 工具+skill / M3 overlay+跳源:**已实现并提交**,38 个 node:test 全绿(`node --test`)
 - 2026-08-18:新增编辑闭环——CLI `edit`(保留状态/溯源,记 `updated_at`)、工具 `trail_done`/`trail_edit`、overlay `e` 键;39 个测试全绿
 - 2026-08-18 PM:UI 一轮——placement 改 popup 120x34;详情页(o/→ 进,全文折行+结构化溯源,页内可跳源/编辑/删除);行内编辑器重搞(src/lineedit.js:KeyParser 按 UTF-8 解码修中文乱码,方向键/Home/End/Delete/ctrl+a/e/u/k/w,输入模式光标可见);列表去编号列、文本前置、meta 右置、整行等宽高亮、header 带计数;open-action 补 diag 定义(此前 action 开门必炸且静默)。50 测试全绿
+- 2026-08-18:skill 按 writing-great-skills 原则瘦身——description 118→71 字(删身份句、合并重复触发词),done guardrail 归位规则段;新增工具描述同义测试 6 条。56 测试全绿
 - E2E 验收:1(溯源)✓ 2(overlay enter→focus)✓ 3(死 pane resume 同 session 历史完整)✓ 4(20 进程并发)✓;5(herdr 重启)未实测 —— 重启会杀本会话,store 为纯文件按构造持久
 - 未做:T9 GitHub 发布(仓库未推远端);overlay 鼠标点击(pane-mover 有,PRD 未要求)
 
