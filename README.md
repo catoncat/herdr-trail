@@ -72,7 +72,7 @@ Data lives in `herdr plugin config-dir envvar.herd-trail` (fallback `~/.local/sh
 
 ```sh
 herdr plugin link .          # register locally
-node --test                  # 65 tests
+node --test                  # 67 tests
 ```
 
 ## License

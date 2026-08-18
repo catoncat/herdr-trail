@@ -72,7 +72,8 @@ herdr 插件：**herd 全局共享 todolist**。agent 在对话中随手记/随�
 - 2026-08-18:skill 按 writing-great-skills 原则瘦身——description 118→71 字(删身份句、合并重复触发词),done guardrail 归位规则段;新增工具描述同义测试 6 条。56 测试全绿
 - E2E 验收:1(溯源)✓ 2(overlay enter→focus)✓ 3(死 pane resume 同 session 历史完整)✓ 4(20 进程并发)✓;5(herdr 重启)未实测 —— 重启会杀本会话,store 为纯文件按构造持久
 - 2026-08-18 晚:产品正名为**备忘**(不是对话 todo);project 改 git root;overlay 当前项目置顶+`g` 分组+`!` 送达(`herdr agent prompt`);GitHub #1-#7 全部关闭。65 测试全绿。仓库已 public + topic `herdr-plugin`
-- 未做:overlay 鼠标点击(pane-mover 有,PRD 未要求)
+- 2026-08-18 夜:v0.2.1——送达改「请处理」;列表文本 cap 80、年龄用 created_at、来源列改 kind、`c`/esc 清过滤。67 测试全绿
+- 未做:overlay 鼠标点击(pane-mover 有,PRD 未要求);组级批量 D/X
 
 ## 验证配方
 
