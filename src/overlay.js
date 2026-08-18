@@ -34,6 +34,7 @@ let cursor = 0;
 let mode = "normal";    // normal | detail | add | edit | confirm-del | filter
 let editor = new LineEditor();
 let filter = "";        // 已生效的过滤串
+let groupMode = "none"; // none | project | age —— g 循环
 let status = "";        // 底部状态行
 let editReturn = "normal";   // edit 提交/取消后回到哪(normal|detail)
 let confirmReturn = "normal";
@@ -97,8 +98,8 @@ function quit(code) {
 }
 
 const HELP = {
-  normal: " j/k 移动 · enter 跳源 · o 详情 · a 新建 · e 编辑 · d done · x 删除 · / 过滤 · q 退出",
-  detail: " enter 跳源 · e 编辑 · d done · x 删除 · ←/q 返回列表",
+  normal: " j/k 移动 · enter 跳源 · ! 送达 · o 详情 · g 分组 · a 新建 · e 编辑 · d done · x 删除 · / 过滤 · q 退出",
+  detail: " enter 跳源 · ! 送达 · e 编辑 · d done · x 删除 · ←/q 返回列表",
   input:  " enter 确认 · esc 取消 · ←/→ 移动 · ctrl+u 清空",
 };
 
@@ -110,7 +111,8 @@ function render() {
   const w = (s) => { out.write(s + "\r\n"); rowNo += 1; };
 
   const inDetail = mode === "detail" || (mode === "edit" && editReturn === "detail") || (mode === "confirm-del" && confirmReturn === "detail");
-  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 待办 · " + counts.done + " 完成" + (currentProject ? " · 当前:" + currentProject : "") + (filter ? "  /" + filter + "/" : "") + RESET);
+  const groupHint = groupMode === "project" ? " · 按项目" : groupMode === "age" ? " · 按时间" : "";
+  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 待办 · " + counts.done + " 完成" + (currentProject ? " · 当前:" + currentProject : "") + groupHint + (filter ? "  /" + filter + "/" : "") + RESET);
   const showHelp = lines >= 6;
   if (showHelp) {
     const helpKey = (mode === "add" || mode === "edit" || mode === "filter") ? "input" : inDetail ? "detail" : "normal";
@@ -133,12 +135,20 @@ function render() {
     }
   } else {
     const capacity = Math.max(1, lines - rowNo - 2);
-    const [start, end] = view.visibleWindow(rows.length, cursor, capacity);
+    const sections = view.groupRows(rows, groupMode);
+    const display = view.flattenGroups(sections, rows);
+    const cursorPos = Math.max(0, display.findIndex((d) => d.kind === "row" && d.idx === cursor));
+    const [start, end] = view.visibleWindow(display.length, cursorPos, capacity);
     for (let i = start; i < end; i++) {
-      const t = rows[i];
+      const d = display[i];
+      if (d.kind === "header") {
+        w(DIM + CYAN + "── " + d.text + RESET);
+        continue;
+      }
+      const t = rows[d.idx];
       const { text, meta } = view.formatRow(t, cols);
       const gap = Math.max(1, cols - view.displayWidth(text) - view.displayWidth(meta));
-      if (i === cursor) {
+      if (d.idx === cursor) {
         w(INVERT + text + " ".repeat(gap) + meta + RESET);
       } else if (t.status === "done") {
         w(DIM + text + " ".repeat(gap) + meta + RESET);
@@ -260,6 +270,10 @@ function dispatchKey(k) {
   }
   if (k.t === "char" && k.ch === "/" && mode === "normal") {
     mode = "filter"; editor = new LineEditor(filter); status = ""; return render();
+  }
+  if (k.t === "char" && k.ch === "g" && mode === "normal") {
+    groupMode = groupMode === "none" ? "project" : groupMode === "project" ? "age" : "none";
+    return render();
   }
   if (k.t === "char" && k.ch === "r") { reload(); status = "已刷新"; return render(); }
 }

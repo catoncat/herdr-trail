@@ -139,4 +139,44 @@ function visibleWindow(total, cursor, capacity) {
   return [start, start + capacity];
 }
 
-module.exports = { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel, projectOf };
+// 分组:none 一段无 header;project 按项目(首次出现序);age 按今天/本周/更早(created_at)。
+// 返回 [{ header, items }] —— header 为 null 表示不画标题。opts.now / opts.projectOf 注入便于单测。
+function groupRows(rows, mode, opts = {}) {
+  const now = opts.now ?? Date.now();
+  const projOf = opts.projectOf ?? projectOf;
+  if (mode === "none" || !rows.length) return [{ header: null, items: rows.slice() }];
+  if (mode === "project") {
+    const map = new Map();
+    for (const t of rows) {
+      const k = projOf(t) || "(无项目)";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    }
+    return [...map.entries()].map(([header, items]) => ({ header, items }));
+  }
+  if (mode === "age") {
+    const buckets = [
+      { header: "今天", items: [], cutoff: now - 86400e3 },
+      { header: "本周", items: [], cutoff: now - 7 * 86400e3 },
+      { header: "更早", items: [], cutoff: -Infinity },
+    ];
+    for (const t of rows) {
+      const ts = Date.parse(t.created_at) || 0;
+      buckets.find((b) => ts >= b.cutoff).items.push(t);
+    }
+    return buckets.filter((b) => b.items.length).map(({ header, items }) => ({ header, items }));
+  }
+  return [{ header: null, items: rows.slice() }];
+}
+
+// 把分组展开成可渲染行:{kind:'header',text} | {kind:'row',idx}。idx 指向 rows 下标。
+function flattenGroups(sections, rows) {
+  const out = [];
+  for (const sec of sections) {
+    if (sec.header) out.push({ kind: "header", text: sec.header + "  (" + sec.items.length + ")" });
+    for (const t of sec.items) out.push({ kind: "row", idx: rows.indexOf(t) });
+  }
+  return out;
+}
+
+module.exports = { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, ageLabel, projectOf, groupRows, flattenGroups };

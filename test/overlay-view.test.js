@@ -2,7 +2,7 @@
 // overlay 视图纯函数测试(docs/prd.md T5;窄 pane 截断见 §8)
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow } = require("../src/overlay-view.js");
+const { displayWidth, truncate, formatRow, formatDetail, wrapText, visibleWindow, groupRows, flattenGroups } = require("../src/overlay-view.js");
 
 test("displayWidth: ASCII=1,CJK=2", () => {
   assert.equal(displayWidth("abc"), 3);
@@ -69,6 +69,42 @@ test("formatDetail: 含状态头/全文/溯源字段/时间", () => {
   // 长文本折行:每一行都不超宽
   const long = { ...T, text: "一段".repeat(40) + "的长文本" };
   for (const l of formatDetail(long, 40)) assert.ok(displayWidth(l.text) <= 42, "超宽: " + l.text);
+});
+
+test("groupRows: none 一段无 header;project 按首次出现序;age 按今天/本周/更早", () => {
+  const now = Date.parse("2026-08-18T12:00:00Z");
+  const mk = (id, created, cwd) => ({
+    id, text: id, status: "open", created_at: created, done_at: null,
+    source: { cwd },
+  });
+  const a = mk("a", "2026-08-18T10:00:00Z", "/p/herdr");
+  const b = mk("b", "2026-08-12T10:00:00Z", "/p/api");
+  const c = mk("c", "2026-07-01T10:00:00Z", "/p/herdr");
+  const none = groupRows([a, b, c], "none");
+  assert.equal(none.length, 1);
+  assert.equal(none[0].header, null);
+  assert.deepEqual(none[0].items.map((t) => t.id), ["a", "b", "c"]);
+
+  const byP = groupRows([a, b, c], "project", { projectOf: (t) => t.source.cwd.split("/").pop() });
+  assert.deepEqual(byP.map((s) => s.header), ["herdr", "api"]);
+  assert.deepEqual(byP[0].items.map((t) => t.id), ["a", "c"]);
+  assert.deepEqual(byP[1].items.map((t) => t.id), ["b"]);
+
+  const byA = groupRows([a, b, c], "age", { now });
+  assert.deepEqual(byA.map((s) => s.header), ["今天", "本周", "更早"]);
+  assert.deepEqual(byA[0].items.map((t) => t.id), ["a"]);
+  assert.deepEqual(byA[1].items.map((t) => t.id), ["b"]);
+  assert.deepEqual(byA[2].items.map((t) => t.id), ["c"]);
+});
+
+test("flattenGroups: header 不进 idx,row.idx 指向原 rows", () => {
+  const rows = [{ id: "a" }, { id: "b" }];
+  const display = flattenGroups([{ header: "P", items: [rows[1], rows[0]] }], rows);
+  assert.deepEqual(display, [
+    { kind: "header", text: "P  (2)" },
+    { kind: "row", idx: 1 },
+    { kind: "row", idx: 0 },
+  ]);
 });
 
 test("visibleWindow: 游标保持在窗口内", () => {
