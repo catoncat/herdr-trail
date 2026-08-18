@@ -27,7 +27,7 @@ const paneAlivePi = JSON.stringify({ result: { pane: { pane_id: "w2Q:pF", agent:
 test("deliverMessage:含 id/正文/recall 线索", () => {
   const m = deliverMessage(TODO(PI_SRC, "检查插件上架效果"));
   assert.match(m, /\[trail t-a3f9\]/);
-  assert.match(m, /我来处理这条备忘:检查插件上架效果/);
+  assert.match(m, /请处理这条备忘:检查插件上架效果/);
   assert.match(m, /recall 搜 '检查插件上架效果'/);
 });
 

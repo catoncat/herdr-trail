@@ -5,7 +5,7 @@ const { planJump } = require("./jump.js");
 
 function deliverMessage(todo) {
   const hint = String(todo.text ?? "").slice(0, 40);
-  return "[trail " + todo.id + "] 我来处理这条备忘:" + todo.text +
+  return "[trail " + todo.id + "] 请处理这条备忘:" + todo.text +
     "(原始上下文可用 recall 搜 '" + hint + "' 找回)";
 }
 
