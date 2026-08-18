@@ -21,6 +21,13 @@ const BIN = path.join(__dirname, "..", "bin", "herd-trail");
 const FILE = store.storeFile(store.resolveStoreDir());
 
 // ---------- state ----------
+// 上下文优先(P1):打开时用户所在 pane 的 cwd → 当前项目名;同状态层内该项目条目置顶。
+// ctx.focused_pane_cwd 字段名经 herdr 0.8.0 二进制 strings 确认。
+let currentProject = null;
+try {
+  const ctx = JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON ?? "{}");
+  currentProject = todos.projectNameForCwd(ctx.focused_pane_cwd ?? ctx.workspace_cwd ?? null);
+} catch { /* 非 herdr 环境(调试直跑)→ 无上下文 */ }
 let rows = [];          // 当前可见(过滤+排序后)的 todo
 let counts = { open: 0, done: 0 };
 let cursor = 0;
@@ -37,7 +44,7 @@ const keyParser = new KeyParser();
 // ---------- data ----------
 function reload() {
   const data = store.readStore(FILE);
-  const all = todos.listTodos(data, { all: true });
+  const all = todos.listTodos(data, { all: true, prioritize: currentProject });
   counts = { open: all.filter((t) => t.status === "open").length, done: all.filter((t) => t.status === "done").length };
   let list = all;
   if (filter) {
@@ -103,7 +110,7 @@ function render() {
   const w = (s) => { out.write(s + "\r\n"); rowNo += 1; };
 
   const inDetail = mode === "detail" || (mode === "edit" && editReturn === "detail") || (mode === "confirm-del" && confirmReturn === "detail");
-  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 待办 · " + counts.done + " 完成" + (filter ? "  /" + filter + "/" : "") + RESET);
+  w(BOLD + CYAN + " Trail" + RESET + DIM + "  " + counts.open + " 待办 · " + counts.done + " 完成" + (currentProject ? " · 当前:" + currentProject : "") + (filter ? "  /" + filter + "/" : "") + RESET);
   const showHelp = lines >= 6;
   if (showHelp) {
     const helpKey = (mode === "add" || mode === "edit" || mode === "filter") ? "input" : inDetail ? "detail" : "normal";
