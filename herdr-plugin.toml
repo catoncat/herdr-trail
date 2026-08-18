@@ -20,5 +20,7 @@ command = ["node", "src/agent-setup.js"]
 [[panes]]
 id = "list"
 title = "Trail"
-placement = "overlay"
+placement = "popup"
+width = 120
+height = 34
 command = ["node", "src/overlay.js"]
