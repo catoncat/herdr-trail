@@ -65,6 +65,7 @@ herdr 插件：**herd 全局共享 todolist**。agent 在对话中随手记/随�
 ## 实现状态(2026-08-17 M1-M3 完成)
 
 - M1 数据层+CLI / M2 pi 工具+skill / M3 overlay+跳源:**已实现并提交**,38 个 node:test 全绿(`node --test`)
+- 2026-08-18:新增编辑闭环——CLI `edit`(保留状态/溯源,记 `updated_at`)、工具 `trail_done`/`trail_edit`、overlay `e` 键;39 个测试全绿
 - E2E 验收:1(溯源)✓ 2(overlay enter→focus)✓ 3(死 pane resume 同 session 历史完整)✓ 4(20 进程并发)✓;5(herdr 重启)未实测 —— 重启会杀本会话,store 为纯文件按构造持久
 - 未做:T9 GitHub 发布(仓库未推远端);overlay 鼠标点击(pane-mover 有,PRD 未要求)
 

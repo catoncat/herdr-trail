@@ -52,6 +52,7 @@ herd-trail add "m1 恢复后 docker rm -f pi-fence-bundle pi-fence-kroki"
 herd-trail list [--all] [--json] [--agent X] [--project Y]
 herd-trail show <id>          # full provenance
 herd-trail done|undo|rm <id>  # id accepts unique prefixes
+herd-trail edit <id> "new text"  # rewrite text, keep status + provenance
 herd-trail open <id>          # jump back to the source conversation
 ```
 
@@ -66,6 +67,7 @@ Provenance is captured automatically at add time (herdr pane, cwd, pi session fi
 | `d` | toggle done (done sinks to the bottom, dimmed) |
 | `x` | delete (asks y/n) |
 | `a` | add (bottom-line input) |
+| `e` | edit text of the selected item |
 | `/` | filter |
 | `r` | refresh (also auto-refreshes every 2s on change) |
 | `q`/esc | close |

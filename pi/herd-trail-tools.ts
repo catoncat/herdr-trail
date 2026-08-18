@@ -55,4 +55,34 @@ export default function (pi: ExtensionAPI) {
 			return { content: [{ type: "text", text: out || "(empty)" }], details: {} };
 		},
 	});
+
+	pi.registerTool({
+		name: "trail_done",
+		label: "Trail Done",
+		description:
+			"Mark a herd-trail todo item as done. Use ONLY when the user explicitly says in this conversation that the item is handled/finished (e.g. '那条搞定了') — never infer it yourself. Errors if the id is unknown.",
+		parameters: Type.Object({
+			todo_id: Type.String({ description: "Todo id, e.g. 't-a3f9' (unique prefix ok)" }),
+		}),
+		async execute(_toolCallId, params) {
+			const out = runCli(["done", params.todo_id]);
+			return { content: [{ type: "text", text: out }], details: {} };
+		},
+	});
+
+	pi.registerTool({
+		name: "trail_edit",
+		label: "Trail Edit",
+		description:
+			"Rewrite the text of a herd-trail todo item (fix a typo, update wording as the task evolves). Keeps status and provenance untouched. Errors if the id is unknown or the new text is empty.",
+		parameters: Type.Object({
+			todo_id: Type.String({ description: "Todo id, e.g. 't-a3f9' (unique prefix ok)" }),
+			text: Type.String({ description: "New single-line text with full context (object + action + condition)" }),
+		}),
+		async execute(_toolCallId, params) {
+			const out = runCli(["edit", params.todo_id, params.text]);
+			return { content: [{ type: "text", text: out }], details: {} };
+		},
+	});
+
 }

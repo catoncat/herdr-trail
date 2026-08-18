@@ -61,6 +61,29 @@ test("show 显示溯源全字段", () => {
   }
 });
 
+test("edit 改文本,保留状态/溯源,空文本报错", () => {
+  const { env } = tmpEnv();
+  const a = run(env, ["add", "旧文本"]);
+  const id = a.stdout.trim().split(/\s+/)[0];
+  const e = run(env, ["edit", id, "新文本 带空格"]);
+  assert.equal(e.status, 0, e.stderr);
+  assert.match(e.stdout, /新文本 带空格/);
+  // list 显示新文本
+  assert.match(run(env, ["list"]).stdout, /新文本 带空格/);
+  assert.doesNotMatch(run(env, ["list"]).stdout, /旧文本/);
+  // 状态保留:done 后再 edit 仍为 done
+  assert.equal(run(env, ["done", id]).status, 0);
+  assert.equal(run(env, ["edit", id, "done 后编辑"]).status, 0);
+  const s = run(env, ["list", "--all"]);
+  assert.match(s.stdout, /done 后编辑/);
+  assert.match(s.stdout, /done/);
+  // show 含 updated_at
+  assert.match(run(env, ["show", id]).stdout, /updated_at/);
+  // 空文本 → 非零退出;未找到 → 非零退出
+  assert.notEqual(run(env, ["edit", id, "   "]).status, 0);
+  assert.notEqual(run(env, ["edit", "t-zzzz", "x"]).status, 0);
+});
+
 test("undo/rm + 未找到报错", () => {
   const { env } = tmpEnv();
   const a = run(env, ["add", "临时"]);

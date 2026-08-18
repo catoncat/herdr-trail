@@ -22,7 +22,7 @@ const FILE = store.storeFile(store.resolveStoreDir());
 // ---------- state ----------
 let rows = [];          // 当前可见(过滤+排序后)的 todo
 let cursor = 0;
-let mode = "normal";    // normal | add | confirm-del | filter
+let mode = "normal";    // normal | add | edit | confirm-del | filter
 let input = "";         // add/filter 的行缓冲
 let filter = "";        // 已生效的过滤串
 let status = "";        // 底部状态行
@@ -91,7 +91,7 @@ function render() {
   const showHelp = lines >= 6;
   const showDetail = lines >= 8 && mode === "normal" && rows.length > 0;
   if (showHelp) {
-    out.write(DIM + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · / 过滤 · r 刷新 · q 退出", cols) + RESET + "\r\n");
+    out.write(DIM + view.truncate(" j/k 移动 · enter 跳源 · d done切换 · x 删除 · a 新建 · e 编辑 · / 过滤 · r 刷新 · q 退出", cols) + RESET + "\r\n");
   }
 
   const capacity = Math.max(1, lines - 2 - (showHelp ? 1 : 0) - (showDetail ? 1 : 0));
@@ -112,6 +112,7 @@ function render() {
   }
 
   if (mode === "add") out.write(" add> " + input + "\r\n");
+  else if (mode === "edit" && rows[cursor]) out.write(" edit> " + input + "\r\n");
   else if (mode === "filter") out.write(" filter> " + input + "\r\n");
   else if (mode === "confirm-del" && sel) out.write(" 确认删除 " + sel.id + " 「" + view.truncate(sel.text, Math.max(1, cols - 20)) + "」?(y/n)\r\n");
   if (status) out.write(DIM + view.truncate(" " + status, cols) + RESET + "\r\n");
@@ -139,12 +140,15 @@ function jumpSelected() {
 
 process.stdin.on("data", (buf) => {
   const s = buf.toString("latin1");
-  if (mode === "add" || mode === "filter") {
+  if (mode === "add" || mode === "edit" || mode === "filter") {
     for (const ch of s) {
       if (ch === "\r" || ch === "\n") {
         const val = input; input = "";
         if (mode === "add" && val.trim()) {
           try { todos.addTodo(FILE, val, humanSource()); status = "已记录"; }
+          catch (e) { status = e.message; }
+        } else if (mode === "edit" && val.trim()) {
+          try { todos.updateTodo(FILE, rows[cursor].id, val); status = "已更新"; }
           catch (e) { status = e.message; }
         }
         if (mode === "filter") filter = val;
@@ -187,6 +191,7 @@ function handleKey(ch) {
     reload(); return render();
   }
   if (ch === "x" && rows[cursor]) { mode = "confirm-del"; return render(); }
+  if (ch === "e" && rows[cursor]) { mode = "edit"; input = rows[cursor].text; status = ""; return render(); }
   if (ch === "a") { mode = "add"; input = ""; status = ""; return render(); }
   if (ch === "/") { mode = "filter"; input = filter; status = ""; return render(); }
   if (ch === "r") { reload(); status = "已刷新"; return render(); }

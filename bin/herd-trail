@@ -13,6 +13,7 @@ const usage = `herd-trail — herd 全局共享 todolist(见 docs/prd.md)
   herd-trail add "文本"           记录(溯源自动捕获)
   herd-trail list [--all] [--json] [--agent X] [--project Y]   列出(open 优先)
   herd-trail show <id> [--json]   详情(含溯源)
+  herd-trail edit <id> "新文本"  改文本(保留状态/溯源)
   herd-trail done|undo|rm <id>    完成/撤销/删除(id 可用唯一前缀)
   herd-trail open <id>            跳回源对话(focus 或 resume)
   herd-trail path                 打印数据文件路径
@@ -100,9 +101,22 @@ function cmdShow(args) {
   console.log("status: " + t.status);
   console.log("created_at: " + t.created_at);
   console.log("done_at: " + (t.done_at ?? "null"));
+  console.log("updated_at: " + (t.updated_at ?? "null"));
   console.log("source:");
   for (const k of ["kind", "agent_name", "pane_id", "workspace_id", "tab_id", "cwd", "pi_session_id", "pi_session_file"]) {
     console.log("  " + k + ": " + (s[k] ?? "null"));
+  }
+}
+
+function cmdEdit(args) {
+  const id = args[0];
+  if (!id) fail("edit 需要 <id>", 2);
+  const text = args.slice(1).join(" ");
+  try {
+    const t = todos.updateTodo(file(), id, text);
+    console.log(t.id + "  " + t.text);
+  } catch (e) {
+    fail(e.message, /empty/.test(e.message) ? 2 : 1);
   }
 }
 
@@ -136,6 +150,7 @@ try {
     case "list": return cmdList(args);
     case "show": return cmdShow(args);
     case "done": return cmdStatus(args, "done");
+    case "edit": return cmdEdit(args);
     case "undo": return cmdStatus(args, "open");
     case "rm": return cmdRm(args);
     case "open": return require("../src/open.js").cmdOpen(args, { fail });

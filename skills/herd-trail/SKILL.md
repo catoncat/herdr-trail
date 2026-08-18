@@ -26,10 +26,11 @@ description: "herd 全局共享 todolist。当对话中出现需要用户后续�
 ## 命令
 
 ```bash
-herd-trail add "文本"     # 记录
-herd-trail list           # 看 open 清单(--all 含 done)
-herd-trail done <id>      # 闭环(确认用户的事已办才可标 done)
-herd-trail show <id>      # 看某条溯源详情
+herd-trail add "文本"            # 记录
+herd-trail list [--all]        # 看清单(默认 open)
+herd-trail edit <id> "新文本"   # 改文本(保留状态/溯源;笔误随手改,不改状态)
+herd-trail done <id>           # 闭环:仅当用户在本对话明确表示该事项已办/处理完,不要自己判断
+herd-trail show <id>           # 看某条溯源详情
 ```
 
-有 model-visible 工具时优先用 `trail_add` / `trail_list`,免 shell 引用问题。
+有 model-visible 工具时优先用 `trail_add` / `trail_list` / `trail_done` / `trail_edit`,免 shell 引用问题。

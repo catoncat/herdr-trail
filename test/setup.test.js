@@ -28,6 +28,10 @@ test("agent-setup: 安装扩展+skill,烧入 CLI 绝对路径,幂等", () => {
   assert.ok(!content.includes('"__HERD_TRAIL_CLI__"'), "占位符应已替换");
   const repoCli = path.join(__dirname, "..", "bin", "herd-trail");
   assert.ok(content.includes(JSON.stringify(repoCli)), "应烧入仓库 CLI 绝对路径");
+  // 4 个 model-visible 工具全部注册
+  for (const t of ["trail_add", "trail_list", "trail_done", "trail_edit"]) {
+    assert.ok(content.includes('name: "' + t + '"'), "应注册 " + t);
+  }
   // skill 原样复制
   assert.equal(fs.readFileSync(skill, "utf8"), fs.readFileSync(path.join(__dirname, "..", "skills", "herd-trail", "SKILL.md"), "utf8"));
   // 幂等:第二次 unchanged

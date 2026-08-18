@@ -57,6 +57,17 @@ function setStatus(file, idOrPrefix, status, opts) {
   }, opts);
 }
 
+function updateTodo(file, idOrPrefix, text, opts) {
+  const clean = normalizeText(text);
+  if (!clean) throw new Error("herd-trail: text must not be empty");
+  return withMutation(file, (data) => {
+    const todo = findTodo(data, idOrPrefix);
+    todo.text = clean;
+    todo.updated_at = new Date().toISOString();
+    return todo;
+  }, opts);
+}
+
 function removeTodo(file, idOrPrefix, opts) {
   return withMutation(file, (data) => {
     const todo = findTodo(data, idOrPrefix);
@@ -82,4 +93,4 @@ function projectOf(todo) {
   return cwd ? path.basename(cwd) : null;
 }
 
-module.exports = { addTodo, findTodo, setStatus, removeTodo, listTodos, normalizeText, emptySource, projectOf };
+module.exports = { addTodo, findTodo, setStatus, updateTodo, removeTodo, listTodos, normalizeText, emptySource, projectOf };
