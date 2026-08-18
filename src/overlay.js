@@ -176,7 +176,7 @@ function render() {
 }
 
 // ---------- jump ----------
-function jumpSelected() {
+function jumpSelected({ deliver = false } = {}) {
   const sel = rows[cursor];
   if (!sel) return;
   try {
@@ -186,11 +186,13 @@ function jumpSelected() {
       currentWorkspace: resolveWorkspace(),
     });
     if (plan.note === "none") { status = "该条无源可跳(herdr 外手动记录)"; return render(); }
-    spawn(process.execPath, [BIN, "open", sel.id, "--delay", "400"], {
+    const args = [BIN, "open", sel.id, "--delay", "400"];
+    if (deliver) args.push("--deliver");
+    spawn(process.execPath, args, {
       detached: true, stdio: "ignore", env: process.env,
     }).unref();
     quit(0);
-  } catch (e) { status = "跳源失败: " + e.message; render(); }
+  } catch (e) { status = (deliver ? "送达失败: " : "跳源失败: ") + e.message; render(); }
 }
 
 // ---------- input ----------
@@ -253,6 +255,7 @@ function dispatchKey(k) {
     if (mode === "detail") return; cursor = Math.min(rows.length - 1, cursor + 1); return render();
   }
   if (k.t === "enter") return jumpSelected();
+  if (k.t === "char" && k.ch === "!") return jumpSelected({ deliver: true });
   if (k.t === "char" && k.ch === "d" && rows[cursor]) {
     const t = rows[cursor];
     try { todos.setStatus(FILE, t.id, t.status === "done" ? "open" : "done"); }

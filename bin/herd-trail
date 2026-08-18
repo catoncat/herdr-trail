@@ -15,7 +15,7 @@ const usage = `herd-trail — herd 全局共享 todolist(见 docs/prd.md)
   herd-trail show <id> [--json]   详情(含溯源)
   herd-trail edit <id> "新文本"  改文本(保留状态/溯源)
   herd-trail done|undo|rm <id>    完成/撤销/删除(id 可用唯一前缀)
-  herd-trail open <id>            跳回源对话(focus 或 resume)
+  herd-trail open <id> [--deliver] 跳回源对话;--deliver 同时把备忘投递给源会话
   herd-trail path                 打印数据文件路径
 `;
 

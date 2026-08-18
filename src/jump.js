@@ -50,7 +50,7 @@ function execPlan(plan, runner, { retries = 3, retryDelayMs = 1500 } = {}) {
   let newPane = null;
   const out = [];
   // agent start 依赖新 tab 的 shell 就绪,就绪窗口不可控 → 失败重试
-  const retryable = (args) => args[0] === "agent" && args[1] === "start";
+  const retryable = (args) => args[0] === "agent" && (args[1] === "start" || args[1] === "prompt" || args[1] === "wait");
   const runSteps = (steps) => {
     for (const step of steps) {
       const args = step.map((a) => (a === "$NEW_PANE" ? newPane : a));
